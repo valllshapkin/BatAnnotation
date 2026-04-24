@@ -28,28 +28,54 @@ def setup_synthetic_data(db: Session):
     seed_core(db)
     seed_eu(db)
     
-    rec = db.query(Recording).first()
-    if rec:
-        return rec.recording_id
+    count = db.query(Recording).count()
+    if count >= 1000:
+        print(f"Стресс-данные уже существуют ({count} записей). Загружаю первую.")
+        return db.query(Recording).first().recording_id
         
-    print("Создаю синтетические данные (с кривыми)...")
-    new_rec = Recording(recording_id=str(uuid.uuid4()), filename="test_forest_01.wav", sample_rate_hz=384000)
+    print("Генерация стресс-теста (1000 записей, 30k calls, кривые и fmaxe)... Это займет пару секунд.")
     
-    seq1 = CallSequence(sequence_id=str(uuid.uuid4()), t_start_ms=1000, t_end_ms=1800, f_min_khz=35, f_max_khz=85)
+    recs_to_add = []
     
-    c1 = BatCall(t_start_ms=1010, t_end_ms=1030, f_min_khz=40, f_max_khz=80, peak_khz=50.0, peak_ms=1020)
-    c1.signal_curves = {"main": [[1010, 80], [1015, 60], [1020, 50], [1025, 45], [1030, 40]]}
-    
-    c2 = BatCall(t_start_ms=1200, t_end_ms=1220, f_min_khz=38, f_max_khz=78, peak_khz=48.0, peak_ms=1210)
-    c2.signal_curves = {"main": [[1200, 78], [1205, 58], [1210, 48], [1215, 43], [1220, 38]]}
-    
-    seq1.calls.extend([c1, c2])
-    new_rec.sequences.append(seq1)
-    
-    db.add(new_rec)
-    db.commit()
-    
-    return new_rec.recording_id
+    for i in range(1000):
+        # ДОБАВЛЕНО: duration_s = 10.0 для правильного масштаба при клике в фон!
+        rec = Recording(
+            recording_id=str(uuid.uuid4()), 
+            filename=f"stress_test_bat_{i:04d}.wav", 
+            sample_rate_hz=384000,
+            duration_s=10.0 
+        )
+        
+        for j in range(3):
+            seq = CallSequence(sequence_id=str(uuid.uuid4()), t_start_ms=1000+j*2000, t_end_ms=1800+j*2000, f_min_khz=35, f_max_khz=85)
+            
+            for k in range(10):
+                t_s = 1010 + j*2000 + k*70
+                t_e = t_s + 20
+                call = BatCall(
+                    call_id=str(uuid.uuid4()),
+                    t_start_ms=t_s, t_end_ms=t_e, 
+                    f_min_khz=40, f_max_khz=80, 
+                    peak_khz=50.0, peak_ms=t_s+10
+                )
+                call.signal_curves = {"main": [[t_s, 80], [t_s+5, 60], [t_s+10, 50], [t_s+15, 45], [t_s+20, 40]]}
+                seq.calls.append(call)
+                
+            rec.sequences.append(seq)
+            
+        recs_to_add.append(rec)
+        
+        if len(recs_to_add) >= 100:
+            db.add_all(recs_to_add)
+            db.commit()
+            recs_to_add = []
+            
+    if recs_to_add:
+        db.add_all(recs_to_add)
+        db.commit()
+        
+    print("Генерация завершена успешно!")
+    return db.query(Recording).first().recording_id
 
 # ==============================================================================
 # ЗАПУСК ПРИЛОЖЕНИЯ
@@ -67,14 +93,11 @@ class MainWindow(QMainWindow):
         
         self.db = SessionLocal()
         
-        # 1. Инициализация единого источника истины (Store)
         self.store = AppStore(self.db)
         self.store.initialize(recording_id)
         
         tabs = QTabWidget()
         
-        # 2. Передаем Store в обе вкладки. 
-        # Теперь вкладки сами знают, как общаться со Стором.
         self.editor_tab = EditorWidget(self.store)
         tabs.addTab(self.editor_tab, "🦇 Интерактивная Разметка")
         

@@ -6,10 +6,6 @@ from BatAnnotation.API import MemoryBatCall, MemorySequence, MemoryRecording, Me
 from BatAnnotation.Reactive.Dict import ReactiveDict
 from BatAnnotation.Reactive.List import ReactiveList
 
-# ==============================================================================
-# УТИЛИТА ДЛЯ ГЕНЕРАЦИИ СВОЙСТВ
-# ==============================================================================
-
 class QtModelBase(QObject):
     changed = Signal()
 
@@ -17,8 +13,6 @@ class QtModelBase(QObject):
         if getattr(self, attr) != val:
             setattr(self, attr, val)
             self.changed.emit()
-
-# ... (Оставляем классы QtBatCall, QtSequence, QtRecording без изменений, как в предыдущем ответе) ...
 
 class QtBatCall(QtModelBase):
     def __init__(self, parent: QObject | None = None):
@@ -29,8 +23,8 @@ class QtBatCall(QtModelBase):
         self._t_end_ms: float = 0.0
         self._f_min_khz: float = 0.0
         self._f_max_khz: float = 0.0
-        self._peak_khz: Optional[float] = None
-        self._peak_ms: Optional[float] = None
+        self._peak_khz: float = 0.0 # ИСПРАВЛЕНИЕ: Безопасные типы для Qt
+        self._peak_ms: float = 0.0  # ИСПРАВЛЕНИЕ: Безопасные типы для Qt
         self._signal_curves: Optional[dict] = None
         self._notes: Optional[str] = None
         self._is_new: bool = True 
@@ -66,14 +60,14 @@ class QtBatCall(QtModelBase):
     def f_max_khz(self, val: float): self._update_val("_f_max_khz", val)
 
     @Property(float, notify=QtModelBase.changed)
-    def peak_khz(self) -> Optional[float]: return self._peak_khz
+    def peak_khz(self) -> float: return self._peak_khz
     @peak_khz.setter
-    def peak_khz(self, val: Optional[float]): self._update_val("_peak_khz", val)
+    def peak_khz(self, val: float): self._update_val("_peak_khz", val)
 
     @Property(float, notify=QtModelBase.changed)
-    def peak_ms(self) -> Optional[float]: return self._peak_ms
+    def peak_ms(self) -> float: return self._peak_ms
     @peak_ms.setter
-    def peak_ms(self, val: Optional[float]): self._update_val("_peak_ms", val)
+    def peak_ms(self, val: float): self._update_val("_peak_ms", val)
 
     @Property(dict, notify=QtModelBase.changed)
     def signal_curves(self) -> Optional[dict]: return self._signal_curves
@@ -85,10 +79,6 @@ class QtBatCall(QtModelBase):
     @notes.setter
     def notes(self, val: Optional[str]): self._update_val("_notes", val)
 
-    @Property(float, notify=QtModelBase.changed)
-    def duration_ms(self) -> float:
-        return self._t_end_ms - self._t_start_ms
-
     def load_from(self, mem: MemoryBatCall) -> None:
         self._call_id = mem.call_id
         self._shape_id = mem.shape_id
@@ -96,8 +86,8 @@ class QtBatCall(QtModelBase):
         self._t_end_ms = mem.t_end_ms
         self._f_min_khz = mem.f_min_khz
         self._f_max_khz = mem.f_max_khz
-        self._peak_khz = mem.peak_khz
-        self._peak_ms = mem.peak_ms
+        self._peak_khz = mem.peak_khz or 0.0
+        self._peak_ms = mem.peak_ms or 0.0
         self._signal_curves = mem.signal_curves
         self._notes = mem.notes
         self._is_new = mem.is_new 
@@ -111,8 +101,8 @@ class QtBatCall(QtModelBase):
             t_end_ms=self._t_end_ms,
             f_min_khz=self._f_min_khz,
             f_max_khz=self._f_max_khz,
-            peak_khz=self._peak_khz,
-            peak_ms=self._peak_ms,
+            peak_khz=self._peak_khz if self._peak_khz else None,
+            peak_ms=self._peak_ms if self._peak_ms else None,
             signal_curves=self._signal_curves,
             notes=self._notes,
             is_new=self._is_new 
@@ -219,10 +209,10 @@ class QtRecording(QtModelBase):
         self._filename: str = ""
         self._detector_id: Optional[str] = None
         self._habitat_id: Optional[str] = None
+        self._duration_s: float = 0.0   # ИСПРАВЛЕНИЕ: Безопасный тип (без Optional)
+        self._sample_rate_hz: int = 0   # ИСПРАВЛЕНИЕ: Безопасный тип
         
         self.sequences = ReactiveList[QtSequence]()
-        # Мы больше не пробрасываем changed от sequences наверх!
-        # Каждому свое: кто слушает sequences - тот и молодец.
 
     @Property(str, notify=QtModelBase.changed)
     def recording_id(self) -> str: return self._recording_id
@@ -244,11 +234,23 @@ class QtRecording(QtModelBase):
     @habitat_id.setter
     def habitat_id(self, val: Optional[str]): self._update_val("_habitat_id", val)
 
+    @Property(float, notify=QtModelBase.changed)
+    def duration_s(self) -> float: return self._duration_s
+    @duration_s.setter
+    def duration_s(self, val: float): self._update_val("_duration_s", val)
+
+    @Property(int, notify=QtModelBase.changed)
+    def sample_rate_hz(self) -> int: return self._sample_rate_hz
+    @sample_rate_hz.setter
+    def sample_rate_hz(self, val: int): self._update_val("_sample_rate_hz", val)
+
     def load_from(self, mem: MemoryRecording) -> None:
         self._recording_id = mem.recording_id
         self._filename = mem.filename
         self._detector_id = mem.detector_id
         self._habitat_id = mem.habitat_id
+        self._duration_s = mem.duration_s or 0.0
+        self._sample_rate_hz = mem.sample_rate_hz or 0
         
         self.sequences.clear()
         qt_seqs = []
@@ -265,7 +267,9 @@ class QtRecording(QtModelBase):
             recording_id=self._recording_id,
             filename=self._filename,
             detector_id=self._detector_id,
-            habitat_id=self._habitat_id
+            habitat_id=self._habitat_id,
+            duration_s=self._duration_s if self._duration_s else None,
+            sample_rate_hz=self._sample_rate_hz if self._sample_rate_hz else None
         )
         mem_rec.sequences = [s.to_memory() for s in self.sequences]
         return mem_rec
@@ -281,10 +285,6 @@ class QtLookups(QtModelBase):
         self.shapes = ReactiveDict[str, MemoryLookupItem]()
 
     def _sync_dict(self, reactive_dict: ReactiveDict, new_data: dict):
-        """
-        ИСПРАВЛЕНИЕ: Строгая синхронизация. 
-        Удаляет ключи, которых больше нет, и обновляет/добавляет новые.
-        """
         keys_to_delete = set(reactive_dict.keys()) - set(new_data.keys())
         for k in keys_to_delete:
             del reactive_dict[k]

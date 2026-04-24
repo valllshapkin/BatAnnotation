@@ -1,7 +1,8 @@
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QPushButton, QMessageBox, QTreeWidgetItemIterator
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QPushButton, QMessageBox, QTreeWidgetItemIterator, QComboBox
 from PySide6.QtCore import Qt
 
 from BatAnnotation.QtModels import QtSequence, QtBatCall
+from BatAnnotation.Tables import Recording
 from BatSpec.QtUp.Builder import build_node as b
 
 from App.TreeWidget import AnnotationTreeWidget
@@ -15,10 +16,18 @@ class EditorWidget(QWidget):
         super().__init__()
         self.store = store
         self.setup_ui()
+        self.load_recording_list()
 
     def setup_ui(self):
         main_layout = QVBoxLayout(self)
         
+        # ДОБАВЛЕНО: Выбор записи
+        with b(main_layout, QHBoxLayout()) as toolbar_top:
+            with b(toolbar_top, QComboBox()) as self.cb_recording:
+                self.cb_recording.currentIndexChanged.connect(self.on_recording_changed)
+                
+            toolbar_top.addStretch()
+
         with b(main_layout, QHBoxLayout()) as toolbar:
             with b(toolbar, QPushButton("➕ Секвенция (Контекст)")) as btn_add_seq:
                 btn_add_seq.clicked.connect(self.add_sequence)
@@ -46,9 +55,31 @@ class EditorWidget(QWidget):
                 
             splitter.setSizes([250, 300, 700])
 
-        # Первичное построение дерева, если данные уже загружены
         if self.store.recording.recording_id:
             self.tree.build_from(self.store.recording)
+
+    def load_recording_list(self):
+        """Загружает список всех файлов из БД в ComboBox"""
+        self.cb_recording.blockSignals(True)
+        self.cb_recording.clear()
+        
+        # Получаем список из БД
+        recs = self.store.db.query(Recording.recording_id, Recording.filename).all()
+        for rec_id, fname in recs:
+            self.cb_recording.addItem(fname, rec_id)
+            
+        # Устанавливаем текущий
+        idx = self.cb_recording.findData(self.store.recording.recording_id)
+        if idx >= 0:
+            self.cb_recording.setCurrentIndex(idx)
+            
+        self.cb_recording.blockSignals(False)
+
+    def on_recording_changed(self):
+        rec_id = self.cb_recording.currentData()
+        if rec_id:
+            self.store.load_recording(rec_id)
+            # Tree и Spectrogram обновятся автоматически через сигналы Store!
 
     def on_tree_selection(self):
         items = self.tree.selectedItems()
@@ -82,7 +113,6 @@ class EditorWidget(QWidget):
         seq.t_end_ms = vr.center().x() + 100
         seq.f_min_khz = 20
         seq.f_max_khz = 60
-        # Добавление в список автоматически сгенерирует узел в TreeWidget
         self.store.recording.sequences.append(seq)
 
     def add_call(self):
@@ -106,7 +136,6 @@ class EditorWidget(QWidget):
         call.peak_ms = call.t_start_ms + (call.t_end_ms - call.t_start_ms)/2
         call.signal_curves = {"main": [[call.t_start_ms, call.f_max_khz], [call.t_end_ms, call.f_min_khz]]}
         
-        # Добавление в список автоматически сгенерирует узел в TreeWidget
         model.calls.append(call)
 
     def delete_selected(self):
@@ -115,7 +144,6 @@ class EditorWidget(QWidget):
         typ, model = items[0].data(0, Qt.ItemDataRole.UserRole)
         
         if typ == "seq":
-            # Удаление из списка автоматически удалит узел из TreeWidget
             self.store.recording.sequences.remove(model)
         elif typ == "call":
             for seq in self.store.recording.sequences:

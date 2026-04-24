@@ -72,6 +72,7 @@ class MemoryRecording:
     recording_id: str
     filename: str
     sample_rate_hz: Optional[int] = None
+    duration_s: Optional[float] = None
     detector_id: Optional[str] = None
     habitat_id: Optional[str] = None
     sequences: List[MemorySequence] = field(default_factory=list)
@@ -114,6 +115,7 @@ class AnnotationManager:
             recording_id=db_rec.recording_id, 
             filename=db_rec.filename,
             sample_rate_hz=db_rec.sample_rate_hz,
+            duration_s=db_rec.duration_s,
             detector_id=db_rec.detector_id,
             habitat_id=db_rec.habitat_id
         )
@@ -159,6 +161,8 @@ class AnnotationManager:
             
             db_rec.habitat_id = mem_rec.habitat_id
             db_rec.detector_id = mem_rec.detector_id
+            db_rec.sample_rate_hz = mem_rec.sample_rate_hz
+            db_rec.duration_s = mem_rec.duration_s
             
             existing_db_seq_ids = {seq.sequence_id for seq in db_rec.sequences}
             existing_db_call_ids = {call.call_id for seq in db_rec.sequences for call in seq.calls}
@@ -224,7 +228,6 @@ class AnnotationManager:
                             db_call.signal_curves = mem_call.signal_curves
                             db_call.notes = mem_call.notes
 
-            # Удаление сирот
             calls_to_delete = existing_db_call_ids - current_mem_call_ids
             if calls_to_delete:
                 self.session.query(BatCall).filter(BatCall.call_id.in_(calls_to_delete)).delete(synchronize_session=False)
@@ -233,15 +236,13 @@ class AnnotationManager:
             if seqs_to_delete:
                 self.session.query(CallSequence).filter(CallSequence.sequence_id.in_(seqs_to_delete)).delete(synchronize_session=False)
 
-            # ИСПРАВЛЕНИЕ 2: Оборачиваем commit в блок try-except, чтобы откатить сессию при ошибке БД
             self.session.commit()
             
-            # СБРОС ФЛАГОВ: После успешного сохранения все объекты перестают быть "новыми"
             for mem_seq in mem_rec.sequences:
                 mem_seq.is_new = False
                 for mem_call in mem_seq.calls:
                     mem_call.is_new = False
 
         except Exception as e:
-            self.session.rollback() # Обязательно откатываем, чтобы разблокировать сессию
-            raise e # Пробрасываем ошибку дальше в UI
+            self.session.rollback()
+            raise e

@@ -25,16 +25,26 @@ class PointROI(pg.ROI):
 
 
 class SmoothPolyLineROI(pg.PolyLineROI):
-    """Полилиния со сглаживанием между управляющими узлами (используется для signal_curves)"""
+    """Полилиния со сглаживанием между управляющими узлами"""
     def __init__(self, positions, pen):
-        # Инициализируем стандартный PolyLineROI, но делаем его линии прозрачными
-        super().__init__(positions, closed=False, pen=pg.mkPen(None), hoverPen='w')
+        # ИСПРАВЛЕНИЕ: Убрали handleSize из аргументов, чтобы не было ошибки
+        super().__init__(
+            positions, 
+            closed=False, 
+            pen=pg.mkPen(None), 
+            hoverPen=None, 
+            handlePen=pg.mkPen('w', width=2)
+        )
         
-        # Создаем собственный QGraphicsPathItem для отрисовки сглаженной кривой
+        # Задаем размер ручек напрямую атрибутом (pyqtgraph подхватит его при отрисовке)
+        self.handleSize = 14 
+        
+        # Обновляем все уже созданные ручки, чтобы они перерисовались в новом размере
+        for h in self.getHandles():
+            h.update()
+            
         self.smooth_path_item = QtWidgets.QGraphicsPathItem(self)
         self.smooth_path_item.setPen(pen)
-        
-        # ИСПРАВЛЕНИЕ: Явно запрещаем заливку полигона под линией
         self.smooth_path_item.setBrush(QtCore.Qt.BrushStyle.NoBrush) 
         self.smooth_path_item.setZValue(-1)
         
@@ -49,12 +59,10 @@ class SmoothPolyLineROI(pg.PolyLineROI):
         pts = np.array([[h.pos().x(), h.pos().y()] for h in handles])
         smooth_pts = chaikin_smooth(pts, iterations=3)
         
-        # Конвертируем numpy array в QPainterPath
         path = pg.arrayToQPath(smooth_pts[:, 0], smooth_pts[:, 1], connect='finite')
         self.smooth_path_item.setPath(path)
 
     def get_raw_points(self):
-        """Возвращает текущие координаты базовых узлов (без сглаживания) относительно сцены"""
         pts = []
         for h in self.getHandles():
             p = self.mapToParent(h.pos())

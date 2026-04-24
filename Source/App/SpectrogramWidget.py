@@ -16,13 +16,10 @@ class FastAnnotationLayer(pg.GraphicsObject):
         
         self.pen_seq = pg.mkPen((50, 150, 255), width=1)
         self.brush_seq = pg.mkBrush(50, 150, 255, 30)
-        
         self.pen_call = pg.mkPen((50, 255, 50), width=1)
         self.brush_call = pg.mkBrush(50, 255, 50, 50)
-        
         self.pen_pt = pg.mkPen((255, 255, 0), width=2)
         self.brush_pt = pg.mkBrush(255, 255, 0, 150)
-        
         self.pen_curve = pg.mkPen((255, 100, 255), width=2)
 
         self.recording.changed.connect(self.update)
@@ -64,16 +61,14 @@ class FastAnnotationLayer(pg.GraphicsObject):
                         if len(pts) >= 2:
                             smooth_pts = chaikin_smooth(pts, 2)
                             path = pg.arrayToQPath(smooth_pts[:, 0], smooth_pts[:, 1], connect='finite')
-                            
                             p.setPen(self.pen_curve)
-                            # ИСПРАВЛЕНИЕ: Сбрасываем кисть, чтобы не залить кривую старой желтой краской!
                             p.setBrush(QtCore.Qt.BrushStyle.NoBrush) 
                             p.drawPath(path)
                             
                 p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, False)
 
     def boundingRect(self):
-        return QtCore.QRectF(0, 0, 999999, 200)
+        return QtCore.QRectF(0, 0, 999999, 300)
 
 
 class SpectrogramWidget(pg.PlotWidget):
@@ -83,7 +78,9 @@ class SpectrogramWidget(pg.PlotWidget):
         super().__init__()
         self.recording = recording
         self.view = self.getViewBox()
-        self.view.setLimits(yMin=0, yMax=200, xMin=0)
+        # ИСПРАВЛЕНИЕ: Убрали жесткое ограничение yMax=200, 
+        # чтобы мы могли видеть данные с детекторов 500kHz (Найквист = 250kHz)
+        self.view.setLimits(xMin=0, yMin=0)
         self.setLabel('bottom', 'Time', units='ms')
         self.setLabel('left', 'Frequency', units='kHz')
         
@@ -96,7 +93,6 @@ class SpectrogramWidget(pg.PlotWidget):
         self.active_model = None
         self.active_type = None
         
-        # Флаги защиты от рекурсии
         self._updating_from_code = False 
         self._updating_from_roi = False  
         
@@ -107,22 +103,25 @@ class SpectrogramWidget(pg.PlotWidget):
 
     def setup_dummy_background(self):
         img = pg.ImageItem()
-        noise = np.random.normal(size=(10000, 200), loc=50, scale=20).astype(np.uint8)
+        noise = np.random.normal(size=(10000, 300), loc=50, scale=20).astype(np.uint8)
         img.setImage(noise)
-        img.setRect(QtCore.QRectF(0, 0, 10000, 200))
+        img.setRect(QtCore.QRectF(0, 0, 10000, 300))
         img.setColorMap(pg.colormap.get('magma'))
         self.view.addItem(img)
 
     def set_selection(self, typ: str, model):
         self._updating_from_code = True
         
-        # 1. Отписываемся от старой модели
         if self.active_model and hasattr(self.active_model, 'changed'):
             try: self.active_model.changed.disconnect(self.on_model_changed_externally)
             except Exception: pass
 
         if self.active_roi:
+            try: self.active_roi.sigRegionChanged.disconnect()
+            except Exception: pass
+            self.active_roi.hide() 
             self.view.removeItem(self.active_roi)
+            self.active_roi.deleteLater() 
             self.active_roi = None
             
         sub_type = typ if typ in ["fmaxe", "curve"] else None
@@ -134,11 +133,17 @@ class SpectrogramWidget(pg.PlotWidget):
             self._updating_from_code = False
             return
 
-        # 2. Подписываемся на новую модель
         self.active_model.changed.connect(self.on_model_changed_externally)
 
-        # 3. Создаем ROI
-        if typ in ["seq", "call"]:
+        # ДОБАВЛЕНО: Фокус на весь файл, если выбран Recording (клик в пустоту)
+        if typ == "rec":
+            max_time_ms = (self.active_model.duration_s * 1000) if self.active_model.duration_s else 10000
+            # Частота Найквиста: (SampleRate / 2) / 1000 для перевода в кГц.
+            max_freq_khz = (self.active_model.sample_rate_hz / 2000) if self.active_model.sample_rate_hz else 150
+            # padding=0.05 добавляет немного воздуха по краям
+            self.view.setRange(xRange=[0, max_time_ms], yRange=[0, max_freq_khz], padding=0.05)
+            
+        elif typ in ["seq", "call"]:
             pen = pg.mkPen((50, 150, 255) if typ == "seq" else (50, 255, 50), width=2)
             pos = (model.t_start_ms, model.f_min_khz)
             size = (max(1, model.t_end_ms - model.t_start_ms), max(1, model.f_max_khz - model.f_min_khz))
@@ -171,11 +176,9 @@ class SpectrogramWidget(pg.PlotWidget):
         self._updating_from_code = False
 
     def on_model_changed_externally(self):
-        """Если модель изменили из Формы, ROI должен послушно подвинуться"""
         if self._updating_from_roi or self._updating_from_code or not self.active_roi: return
         
         self._updating_from_code = True
-        
         if self.active_type in ["seq", "call"]:
             self.active_roi.setPos((self.active_model.t_start_ms, self.active_model.f_min_khz))
             self.active_roi.setSize((self.active_model.t_end_ms - self.active_model.t_start_ms, self.active_model.f_max_khz - self.active_model.f_min_khz))
@@ -185,18 +188,14 @@ class SpectrogramWidget(pg.PlotWidget):
         elif self.active_type == "fmaxe":
             if self.active_model.peak_ms and self.active_model.peak_khz:
                 self.active_roi.setPos((self.active_model.peak_ms, self.active_model.peak_khz))
-                
         self._updating_from_code = False
 
     def on_roi_changed(self):
-        """Если мышку тянут по графику, обновляем Модель"""
         if self._updating_from_code or not self.active_model: return
-        
         self._updating_from_roi = True 
         
         if self.active_type in ["seq", "call"]:
             pos, size = self.active_roi.pos(), self.active_roi.size()
-            
             dx = pos.x() - self._prev_roi_pos.x()
             dy = pos.y() - self._prev_roi_pos.y()
             is_translating = (size.x() == self._prev_roi_size.x() and size.y() == self._prev_roi_size.y())
@@ -239,52 +238,49 @@ class SpectrogramWidget(pg.PlotWidget):
             call.f_min_khz += dy
             call.f_max_khz += dy
             
-        if call.peak_ms is not None:
-            call.peak_ms += dx
-        if call.peak_khz is not None:
-            call.peak_khz += dy
+        if call.peak_ms is not None: call.peak_ms += dx
+        if call.peak_khz is not None: call.peak_khz += dy
             
         if call.signal_curves and "main" in call.signal_curves:
             new_curves = dict(call.signal_curves)
-            new_pts = []
-            for pt in new_curves["main"]:
-                new_pts.append([pt[0] + dx, pt[1] + dy])
-            new_curves["main"] = new_pts
+            new_curves["main"] = [[pt[0] + dx, pt[1] + dy] for pt in new_curves["main"]]
             call.signal_curves = new_curves
-
-    def get_hit_threshold(self):
-        px, py = self.view.viewPixelSize()
-        return max(px, py) * 8
 
     def on_mouse_click(self, ev):
         if ev.button() != Qt.MouseButton.LeftButton: return
         
-        # ИСПРАВЛЕНИЕ: Блокируем клик, ТОЛЬКО если пользователь попал 
-        # прямо в "управляющий маркер" (квадратик по углам рамки). 
-        # Само тело ROI теперь прозрачно для кликов!
         for item in self.scene().items(ev.scenePos()):
             if type(item).__name__ == "Handle":
                 return
 
-        pos = self.view.mapSceneToView(ev.scenePos())
-        px, py, thresh2 = pos.x(), pos.y(), self.get_hit_threshold()**2
+        scene_pos = ev.scenePos()
+        sx, sy = scene_pos.x(), scene_pos.y()
+        px, py = self.view.mapSceneToView(scene_pos).x(), self.view.mapSceneToView(scene_pos).y()
 
-        # 1. Проверяем Точки (самые мелкие)
+        THRESH2_POINT = 36 
+        THRESH2_LINE = 25 
+
+        # 1. Проверяем Точки (fmaxe)
         for seq in self.recording.sequences:
             for call in seq.calls:
                 if call.peak_khz is not None and call.peak_ms is not None:
-                    if (px - call.peak_ms)**2 + (py - call.peak_khz)**2 < thresh2:
-                        return self.itemClicked.emit("fmaxe", call)
+                    pt_scene = self.view.mapViewToScene(QtCore.QPointF(call.peak_ms, call.peak_khz))
+                    if pt_scene:
+                        if (pt_scene.x() - sx)**2 + (pt_scene.y() - sy)**2 <= THRESH2_POINT: 
+                            return self.itemClicked.emit("fmaxe", call)
 
-        # 2. Проверяем Линии
+        # 2. Проверяем Линии (Signal curves)
         for seq in self.recording.sequences:
             for call in seq.calls:
                 if call.signal_curves and "main" in call.signal_curves:
                     pts = call.signal_curves["main"]
                     for i in range(len(pts)-1):
-                        d2 = point_line_distance(px, py, pts[i][0], pts[i][1], pts[i+1][0], pts[i+1][1])
-                        if d2 < thresh2:
-                            return self.itemClicked.emit("curve", call)
+                        p1 = self.view.mapViewToScene(QtCore.QPointF(*pts[i]))
+                        p2 = self.view.mapViewToScene(QtCore.QPointF(*pts[i+1]))
+                        if p1 and p2:
+                            d2 = point_line_distance(sx, sy, p1.x(), p1.y(), p2.x(), p2.y())
+                            if d2 <= THRESH2_LINE:
+                                return self.itemClicked.emit("curve", call)
 
         # 3. Проверяем Писки (Calls)
         for seq in self.recording.sequences:
@@ -297,5 +293,5 @@ class SpectrogramWidget(pg.PlotWidget):
             if (seq.t_start_ms <= px <= seq.t_end_ms) and (seq.f_min_khz <= py <= seq.f_max_khz):
                 return self.itemClicked.emit("seq", seq)
 
-        # 5. Клик в пустоту
-        self.itemClicked.emit("", None)
+        # 5. ИСПРАВЛЕНИЕ: Клик в пустоту -> Выделяем запись целиком
+        self.itemClicked.emit("rec", self.recording)

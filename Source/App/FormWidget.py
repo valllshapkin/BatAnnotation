@@ -3,34 +3,21 @@ from PySide6.QtCore import Qt
 from BatSpec.QtUp.Builder import build_node as b
 
 class ReactiveComboBox(QComboBox):
-    """
-    Умный ComboBox, который сам следит за ReactiveDict.
-    Если элемент удалили из БД, он моментально исчезнет и отсюда!
-    """
     def __init__(self, reactive_dict, label_attr: str, parent=None):
         super().__init__(parent)
         self.r_dict = reactive_dict
         self.label_attr = label_attr
-        
-        # Первичная загрузка
         self.rebuild()
-        
-        # Подписываемся на ЛЮБЫЕ изменения в справочнике (в т.ч. удаление)
         self.r_dict.signals.changed.connect(self.rebuild)
 
     def rebuild(self):
-        """Полностью пересобирает список, сохраняя текущий выбор, если возможно."""
         current_id = self.currentData()
-        
         self.blockSignals(True)
         self.clear()
         self.addItem("--- Не выбрано ---", None)
-        
         for k, v in self.r_dict.items():
             label = getattr(v, self.label_attr) or getattr(v, "name", "N/A")
             self.addItem(label, k)
-            
-        # Восстанавливаем выбор
         idx = self.findData(current_id)
         self.setCurrentIndex(idx if idx >= 0 else 0)
         self.blockSignals(False)
@@ -44,7 +31,6 @@ class PropertyForms(QStackedWidget):
         self.lookups = store.lookups
         self.current_model = None
         self.current_typ = None
-        
         self.setup_ui()
 
     def setup_ui(self):
@@ -55,9 +41,15 @@ class PropertyForms(QStackedWidget):
                     self.rec_filename = QLineEdit()
                     self.rec_detector = ReactiveComboBox(self.lookups.detectors, "name")
                     self.rec_habitat = ReactiveComboBox(self.lookups.habitats, "name")
+                    # ДОБАВЛЕНО: Поля для Sample Rate и Duration
+                    self.rec_duration_s = QDoubleSpinBox(); self.rec_duration_s.setMaximum(999999)
+                    self.rec_sample_rate_hz = QDoubleSpinBox(); self.rec_sample_rate_hz.setMaximum(9999999)
+                    
                     f_rec.addRow("Файл:", self.rec_filename)
                     f_rec.addRow("Детектор:", self.rec_detector)
                     f_rec.addRow("Среда:", self.rec_habitat)
+                    f_rec.addRow("Длительность (сек):", self.rec_duration_s)
+                    f_rec.addRow("Sample Rate (Гц):", self.rec_sample_rate_hz)
                 l_rec.addStretch()
         
         # 1: Sequence
@@ -115,6 +107,8 @@ class PropertyForms(QStackedWidget):
         self.rec_filename.textChanged.connect(lambda v: self.update_model('filename', v))
         self.rec_detector.currentIndexChanged.connect(lambda: self.update_cb(self.rec_detector, 'detector_id'))
         self.rec_habitat.currentIndexChanged.connect(lambda: self.update_cb(self.rec_habitat, 'habitat_id'))
+        self.rec_duration_s.valueChanged.connect(lambda v: self.update_model('duration_s', v))
+        self.rec_sample_rate_hz.valueChanged.connect(lambda v: self.update_model('sample_rate_hz', int(v)))
         
         self.seq_species.currentIndexChanged.connect(lambda: self.update_cb(self.seq_species, 'species_id'))
         self.seq_context.currentIndexChanged.connect(lambda: self.update_cb(self.seq_context, 'context_id'))
@@ -161,6 +155,9 @@ class PropertyForms(QStackedWidget):
             self.set_val(self.rec_filename, model.filename)
             self.set_cb(self.rec_detector, model.detector_id)
             self.set_cb(self.rec_habitat, model.habitat_id)
+            self.set_val(self.rec_duration_s, model.duration_s or 0.0)
+            self.set_val(self.rec_sample_rate_hz, model.sample_rate_hz or 0)
+            
         elif self.current_typ == "seq":
             self.setCurrentIndex(1)
             self.set_cb(self.seq_species, model.species_id)
@@ -169,6 +166,7 @@ class PropertyForms(QStackedWidget):
             self.set_val(self.seq_t_end, model.t_end_ms)
             self.set_val(self.seq_f_min, model.f_min_khz)
             self.set_val(self.seq_f_max, model.f_max_khz)
+            
         elif self.current_typ in ["call", "fmaxe", "curve"]:
             self.setCurrentIndex(2)
             self.set_cb(self.call_shape, model.shape_id)
