@@ -1,26 +1,24 @@
-from typing import Type, Any
+from typing import Type
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QComboBox, QPushButton, 
     QTableView, QLabel, QMessageBox, QHeaderView, QAbstractItemView
 )
-from PySide6.QtCore import Signal
-from sqlalchemy.orm import Session, DeclarativeBase
+# Сигнал нам больше не нужен!
+from sqlalchemy.orm import DeclarativeBase
 
-# Используем декларативный билдер
 from BatSpec.QtUp.Builder import build_node as b
 from BatSpec.QtUp.ModelSQLA import SqlAlchemyTableModel, SqlAlchemyDelegate
 from BatAnnotation.Lookup import Species, DetectorModel, HabitatType, ContextType, SignalShape
+from App.Store import AppStore # Импортируем тип для аннотации
 
 
 class LookupsEditorWidget(QWidget):
     """Вкладка для редактирования справочников."""
-    
-    # Сигнал, который испускается при успешном сохранении изменений в БД
-    lookupsChanged = Signal()
 
-    def __init__(self, db_session: Session):
+    def __init__(self, store: AppStore):
         super().__init__()
-        self.db = db_session
+        self.store = store          # Сохраняем ссылку на Store
+        self.db = self.store.db     # Берем сессию БД для таблицы
         self.table_model = None
         self.setup_ui()
     
@@ -28,7 +26,6 @@ class LookupsEditorWidget(QWidget):
         main_layout = QVBoxLayout(self)
 
         with b(main_layout, QHBoxLayout()) as top_layout:
-            
             with b(top_layout, QLabel("Справочник:")):
                 pass 
             
@@ -70,36 +67,31 @@ class LookupsEditorWidget(QWidget):
         self.table.setItemDelegate(delegate)
 
     def add_row(self):
-        if not self.table_model:
-            return
-            
+        if not self.table_model: return
         row = self.table_model.rowCount()
         if self.table_model.insertRows(row, 1):
             self.table.selectRow(row)
 
     def delete_row(self):
-        if not self.table_model:
-            return
-            
+        if not self.table_model: return
         selected = self.table.selectionModel().selectedRows()
         if not selected:
             QMessageBox.warning(self, "Внимание", "Выберите строку для удаления.")
             return
-            
         for index in sorted(selected, key=lambda x: x.row(), reverse=True):
             self.table_model.removeRows(index.row(), 1)
 
     def save_table(self) -> bool:
         try:
-            self.db.commit()
+            self.db.commit() # 1. Физически сохраняем в БД
+            
+            # 2. НАПРЯМУЮ ПРИКАЗЫВАЕМ СТОРУ ОБНОВИТЬСЯ!
+            self.store.sync_lookups_from_db() 
+            
             QMessageBox.information(self, "Успех", "Справочники обновлены!")
             self.table_model.refresh()
-            
-            # Уведомляем остальное приложение, что справочники изменились!
-            self.lookupsChanged.emit()
-            
             return True
         except Exception as e:
             self.db.rollback()
-            QMessageBox.critical(self, "Ошибка БД", f"Не удалось сохранить.\nВозможно, вы не заполнили обязательные поля.\n\nПодробности:\n{e}")
+            QMessageBox.critical(self, "Ошибка БД", f"Не удалось сохранить.\n\nПодробности:\n{e}")
             return False

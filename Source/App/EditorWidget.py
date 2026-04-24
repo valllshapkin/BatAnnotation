@@ -1,28 +1,20 @@
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QPushButton, QMessageBox, QTreeWidgetItemIterator
 from PySide6.QtCore import Qt
 
-from BatAnnotation.API import AnnotationManager
-from BatAnnotation.QtModels import QtRecording, QtLookups, QtSequence, QtBatCall
+from BatAnnotation.QtModels import QtSequence, QtBatCall
 from BatSpec.QtUp.Builder import build_node as b
 
 from App.TreeWidget import AnnotationTreeWidget
 from App.FormWidget import PropertyForms
 from App.SpectrogramWidget import SpectrogramWidget
-from sqlalchemy.orm import Session
+from App.Store import AppStore
 
 class EditorWidget(QWidget):
-    """Главный виджет вкладки разметки. Оркестратор."""
-    def __init__(self, db_session: Session, recording_id: str):
+    """Главный виджет вкладки разметки. Оркестратор UI."""
+    def __init__(self, store: AppStore):
         super().__init__()
-        self.api = AnnotationManager(db_session)
-        self.lookups = QtLookups()
-        self.recording = QtRecording()
-        self.recording_id = recording_id
-        
-        self.lookups.load_from(self.api.load_lookups())
-        
+        self.store = store
         self.setup_ui()
-        self.load_data()
 
     def setup_ui(self):
         main_layout = QVBoxLayout(self)
@@ -43,32 +35,20 @@ class EditorWidget(QWidget):
                 btn_save.clicked.connect(self.save_data)
 
         with b(main_layout, QSplitter(Qt.Orientation.Horizontal)) as splitter:
-            with b(splitter, AnnotationTreeWidget(self.lookups)) as self.tree:
+            with b(splitter, AnnotationTreeWidget(self.store)) as self.tree:
                 self.tree.itemSelectionChanged.connect(self.on_tree_selection)
                 
-            with b(splitter, PropertyForms(self.lookups)) as self.forms:
+            with b(splitter, PropertyForms(self.store)) as self.forms:
                 pass
                 
-            with b(splitter, SpectrogramWidget(self.recording)) as self.plot:
+            with b(splitter, SpectrogramWidget(self.store.recording)) as self.plot:
                 self.plot.itemClicked.connect(self.on_plot_click)
                 
             splitter.setSizes([250, 300, 700])
 
-    def load_data(self):
-        mem_rec = self.api.load_recording(self.recording_id)
-        if mem_rec:
-            self.recording.load_from(mem_rec)
-            self.tree.build_from(self.recording)
-
-    def refresh_lookups(self):
-        """Вызывается извне (из Main.py), когда справочники в БД изменились"""
-        fresh_lookups = self.api.load_lookups()
-        self.lookups.load_from(fresh_lookups)
-        
-        # Обновляем комбобоксы в форме
-        self.forms.refresh_lookups()
-        # Обновляем тексты в дереве (там выводятся названия видов)
-        self.tree.refresh_all_texts()
+        # Первичное построение дерева, если данные уже загружены
+        if self.store.recording.recording_id:
+            self.tree.build_from(self.store.recording)
 
     def on_tree_selection(self):
         items = self.tree.selectedItems()
@@ -102,8 +82,8 @@ class EditorWidget(QWidget):
         seq.t_end_ms = vr.center().x() + 100
         seq.f_min_khz = 20
         seq.f_max_khz = 60
-        self.recording.sequences.append(seq)
-        self.tree.build_from(self.recording)
+        # Добавление в список автоматически сгенерирует узел в TreeWidget
+        self.store.recording.sequences.append(seq)
 
     def add_call(self):
         items = self.tree.selectedItems()
@@ -126,8 +106,8 @@ class EditorWidget(QWidget):
         call.peak_ms = call.t_start_ms + (call.t_end_ms - call.t_start_ms)/2
         call.signal_curves = {"main": [[call.t_start_ms, call.f_max_khz], [call.t_end_ms, call.f_min_khz]]}
         
+        # Добавление в список автоматически сгенерирует узел в TreeWidget
         model.calls.append(call)
-        self.tree.build_from(self.recording)
 
     def delete_selected(self):
         items = self.tree.selectedItems()
@@ -135,9 +115,10 @@ class EditorWidget(QWidget):
         typ, model = items[0].data(0, Qt.ItemDataRole.UserRole)
         
         if typ == "seq":
-            self.recording.sequences.remove(model)
+            # Удаление из списка автоматически удалит узел из TreeWidget
+            self.store.recording.sequences.remove(model)
         elif typ == "call":
-            for seq in self.recording.sequences:
+            for seq in self.store.recording.sequences:
                 if model in seq.calls:
                     seq.calls.remove(model)
                     break
@@ -148,19 +129,10 @@ class EditorWidget(QWidget):
             else:
                 model.signal_curves = None
             model.changed.emit()
-            
-        self.tree.build_from(self.recording)
 
     def save_data(self):
         try:
-            mem_rec_to_save = self.recording.to_memory()
-            self.api.save_recording(mem_rec_to_save)
+            self.store.save_recording_to_db()
             QMessageBox.information(self, "Успех", "Данные сохранены!")
-
-            for seq in self.recording.sequences:
-                seq._is_new = False
-                for call in seq.calls:
-                    call._is_new = False
-            
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", f"Не удалось сохранить: {e}")

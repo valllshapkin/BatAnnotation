@@ -64,7 +64,10 @@ class FastAnnotationLayer(pg.GraphicsObject):
                         if len(pts) >= 2:
                             smooth_pts = chaikin_smooth(pts, 2)
                             path = pg.arrayToQPath(smooth_pts[:, 0], smooth_pts[:, 1], connect='finite')
+                            
                             p.setPen(self.pen_curve)
+                            # ИСПРАВЛЕНИЕ: Сбрасываем кисть, чтобы не залить кривую старой желтой краской!
+                            p.setBrush(QtCore.Qt.BrushStyle.NoBrush) 
                             p.drawPath(path)
                             
                 p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, False)
@@ -183,15 +186,13 @@ class SpectrogramWidget(pg.PlotWidget):
             if self.active_model.peak_ms and self.active_model.peak_khz:
                 self.active_roi.setPos((self.active_model.peak_ms, self.active_model.peak_khz))
                 
-        # Для PolyLineROI обновление формы чуть сложнее, пока оставляем.
-        
         self._updating_from_code = False
 
     def on_roi_changed(self):
         """Если мышку тянут по графику, обновляем Модель"""
         if self._updating_from_code or not self.active_model: return
         
-        self._updating_from_roi = True # Защита, чтобы on_model_changed_externally не сработал на наше же изменение
+        self._updating_from_roi = True 
         
         if self.active_type in ["seq", "call"]:
             pos, size = self.active_roi.pos(), self.active_roi.size()
@@ -258,19 +259,24 @@ class SpectrogramWidget(pg.PlotWidget):
     def on_mouse_click(self, ev):
         if ev.button() != Qt.MouseButton.LeftButton: return
         
+        # ИСПРАВЛЕНИЕ: Блокируем клик, ТОЛЬКО если пользователь попал 
+        # прямо в "управляющий маркер" (квадратик по углам рамки). 
+        # Само тело ROI теперь прозрачно для кликов!
         for item in self.scene().items(ev.scenePos()):
-            if isinstance(item, pg.ROI) or (hasattr(item, 'parentItem') and isinstance(item.parentItem(), pg.ROI)):
+            if type(item).__name__ == "Handle":
                 return
 
         pos = self.view.mapSceneToView(ev.scenePos())
         px, py, thresh2 = pos.x(), pos.y(), self.get_hit_threshold()**2
 
+        # 1. Проверяем Точки (самые мелкие)
         for seq in self.recording.sequences:
             for call in seq.calls:
                 if call.peak_khz is not None and call.peak_ms is not None:
                     if (px - call.peak_ms)**2 + (py - call.peak_khz)**2 < thresh2:
                         return self.itemClicked.emit("fmaxe", call)
 
+        # 2. Проверяем Линии
         for seq in self.recording.sequences:
             for call in seq.calls:
                 if call.signal_curves and "main" in call.signal_curves:
@@ -280,13 +286,16 @@ class SpectrogramWidget(pg.PlotWidget):
                         if d2 < thresh2:
                             return self.itemClicked.emit("curve", call)
 
+        # 3. Проверяем Писки (Calls)
         for seq in self.recording.sequences:
             for call in seq.calls:
                 if (call.t_start_ms <= px <= call.t_end_ms) and (call.f_min_khz <= py <= call.f_max_khz):
                     return self.itemClicked.emit("call", call)
 
+        # 4. Проверяем Секвенции (Contexts)
         for seq in self.recording.sequences:
             if (seq.t_start_ms <= px <= seq.t_end_ms) and (seq.f_min_khz <= py <= seq.f_max_khz):
                 return self.itemClicked.emit("seq", seq)
 
+        # 5. Клик в пустоту
         self.itemClicked.emit("", None)

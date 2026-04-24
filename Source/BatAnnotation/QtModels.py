@@ -18,15 +18,11 @@ class QtModelBase(QObject):
             setattr(self, attr, val)
             self.changed.emit()
 
-
-# ==============================================================================
-# МОДЕЛИ ДАННЫХ
-# ==============================================================================
+# ... (Оставляем классы QtBatCall, QtSequence, QtRecording без изменений, как в предыдущем ответе) ...
 
 class QtBatCall(QtModelBase):
     def __init__(self, parent: QObject | None = None):
         super().__init__(parent)
-        # ИСПРАВЛЕНИЕ 1: Генерируем уникальный ID при создании нового объекта UI
         self._call_id: str = str(uuid.uuid4())
         self._shape_id: Optional[str] = None
         self._t_start_ms: float = 0.0
@@ -126,7 +122,6 @@ class QtBatCall(QtModelBase):
 class QtSequence(QtModelBase):
     def __init__(self, parent: QObject | None = None):
         super().__init__(parent)
-        # ИСПРАВЛЕНИЕ 1: Генерируем уникальный ID
         self._sequence_id: str = str(uuid.uuid4())
         self._context_id: Optional[str] = None
         self._species_id: Optional[str] = None
@@ -220,13 +215,14 @@ class QtSequence(QtModelBase):
 class QtRecording(QtModelBase):
     def __init__(self, parent: QObject | None = None):
         super().__init__(parent)
-        self._recording_id: str = str(uuid.uuid4()) # Для надежности
+        self._recording_id: str = str(uuid.uuid4())
         self._filename: str = ""
         self._detector_id: Optional[str] = None
         self._habitat_id: Optional[str] = None
         
         self.sequences = ReactiveList[QtSequence]()
-        self.sequences.signals.changed.connect(self.changed)
+        # Мы больше не пробрасываем changed от sequences наверх!
+        # Каждому свое: кто слушает sequences - тот и молодец.
 
     @Property(str, notify=QtModelBase.changed)
     def recording_id(self) -> str: return self._recording_id
@@ -284,15 +280,19 @@ class QtLookups(QtModelBase):
         self.contexts = ReactiveDict[str, MemoryLookupItem]()
         self.shapes = ReactiveDict[str, MemoryLookupItem]()
 
-        self.species.signals.changed.connect(self.changed)
-        self.detectors.signals.changed.connect(self.changed)
-        self.habitats.signals.changed.connect(self.changed)
-        self.contexts.signals.changed.connect(self.changed)
-        self.shapes.signals.changed.connect(self.changed)
+    def _sync_dict(self, reactive_dict: ReactiveDict, new_data: dict):
+        """
+        ИСПРАВЛЕНИЕ: Строгая синхронизация. 
+        Удаляет ключи, которых больше нет, и обновляет/добавляет новые.
+        """
+        keys_to_delete = set(reactive_dict.keys()) - set(new_data.keys())
+        for k in keys_to_delete:
+            del reactive_dict[k]
+        reactive_dict.update(new_data)
 
     def load_from(self, mem: MemoryLookups) -> None:
-        self.species.update(mem.species)
-        self.detectors.update(mem.detectors)
-        self.habitats.update(mem.habitats)
-        self.contexts.update(mem.contexts)
-        self.shapes.update(mem.shapes)
+        self._sync_dict(self.species, mem.species)
+        self._sync_dict(self.detectors, mem.detectors)
+        self._sync_dict(self.habitats, mem.habitats)
+        self._sync_dict(self.contexts, mem.contexts)
+        self._sync_dict(self.shapes, mem.shapes)

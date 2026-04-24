@@ -33,6 +33,9 @@ class SmoothPolyLineROI(pg.PolyLineROI):
         # Создаем собственный QGraphicsPathItem для отрисовки сглаженной кривой
         self.smooth_path_item = QtWidgets.QGraphicsPathItem(self)
         self.smooth_path_item.setPen(pen)
+        
+        # ИСПРАВЛЕНИЕ: Явно запрещаем заливку полигона под линией
+        self.smooth_path_item.setBrush(QtCore.Qt.BrushStyle.NoBrush) 
         self.smooth_path_item.setZValue(-1)
         
         self.sigRegionChanged.connect(self.update_smooth_path)

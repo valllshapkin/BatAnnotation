@@ -2,16 +2,50 @@ from PySide6.QtWidgets import QWidget, QStackedWidget, QFormLayout, QDoubleSpinB
 from PySide6.QtCore import Qt
 from BatSpec.QtUp.Builder import build_node as b
 
+class ReactiveComboBox(QComboBox):
+    """
+    Умный ComboBox, который сам следит за ReactiveDict.
+    Если элемент удалили из БД, он моментально исчезнет и отсюда!
+    """
+    def __init__(self, reactive_dict, label_attr: str, parent=None):
+        super().__init__(parent)
+        self.r_dict = reactive_dict
+        self.label_attr = label_attr
+        
+        # Первичная загрузка
+        self.rebuild()
+        
+        # Подписываемся на ЛЮБЫЕ изменения в справочнике (в т.ч. удаление)
+        self.r_dict.signals.changed.connect(self.rebuild)
+
+    def rebuild(self):
+        """Полностью пересобирает список, сохраняя текущий выбор, если возможно."""
+        current_id = self.currentData()
+        
+        self.blockSignals(True)
+        self.clear()
+        self.addItem("--- Не выбрано ---", None)
+        
+        for k, v in self.r_dict.items():
+            label = getattr(v, self.label_attr) or getattr(v, "name", "N/A")
+            self.addItem(label, k)
+            
+        # Восстанавливаем выбор
+        idx = self.findData(current_id)
+        self.setCurrentIndex(idx if idx >= 0 else 0)
+        self.blockSignals(False)
+
+
 class PropertyForms(QStackedWidget):
-    """Набор форм для свойств (Recording, Sequence, Call)"""
-    def __init__(self, lookups):
+    """Реактивный набор форм."""
+    def __init__(self, store):
         super().__init__()
-        self.lookups = lookups
+        self.store = store
+        self.lookups = store.lookups
         self.current_model = None
         self.current_typ = None
         
         self.setup_ui()
-        self.populate_comboboxes()
 
     def setup_ui(self):
         # 0: Recording
@@ -19,8 +53,8 @@ class PropertyForms(QStackedWidget):
             with b(w_rec, QVBoxLayout()) as l_rec:
                 with b(l_rec, QFormLayout()) as f_rec:
                     self.rec_filename = QLineEdit()
-                    self.rec_detector = QComboBox()
-                    self.rec_habitat = QComboBox()
+                    self.rec_detector = ReactiveComboBox(self.lookups.detectors, "name")
+                    self.rec_habitat = ReactiveComboBox(self.lookups.habitats, "name")
                     f_rec.addRow("Файл:", self.rec_filename)
                     f_rec.addRow("Детектор:", self.rec_detector)
                     f_rec.addRow("Среда:", self.rec_habitat)
@@ -30,8 +64,8 @@ class PropertyForms(QStackedWidget):
         with b(self, QWidget()) as w_seq:
             with b(w_seq, QVBoxLayout()) as l_seq:
                 with b(l_seq, QFormLayout()) as f_seq:
-                    self.seq_species = QComboBox()
-                    self.seq_context = QComboBox()
+                    self.seq_species = ReactiveComboBox(self.lookups.species, "latin_name")
+                    self.seq_context = ReactiveComboBox(self.lookups.contexts, "name")
                     self.seq_t_start = QDoubleSpinBox(); self.seq_t_start.setMaximum(999999)
                     self.seq_t_end = QDoubleSpinBox(); self.seq_t_end.setMaximum(999999)
                     self.seq_f_min = QDoubleSpinBox(); self.seq_f_min.setMaximum(200)
@@ -51,7 +85,7 @@ class PropertyForms(QStackedWidget):
         with b(self, QWidget()) as w_call:
             with b(w_call, QVBoxLayout()) as l_call:
                 with b(l_call, QFormLayout()) as f_call:
-                    self.call_shape = QComboBox()
+                    self.call_shape = ReactiveComboBox(self.lookups.shapes, "name")
                     self.call_t_start = QDoubleSpinBox(); self.call_t_start.setMaximum(999999)
                     self.call_t_end = QDoubleSpinBox(); self.call_t_end.setMaximum(999999)
                     self.call_f_min = QDoubleSpinBox(); self.call_f_min.setMaximum(200)
@@ -76,26 +110,6 @@ class PropertyForms(QStackedWidget):
             
         self.setCurrentIndex(3)
         self.bind_signals()
-
-    def populate_comboboxes(self):
-        def fill(cb: QComboBox, items_dict: dict, label_attr: str):
-            cb.blockSignals(True)
-            cb.clear()
-            cb.addItem("--- Не выбрано ---", None)
-            for k, v in items_dict.items(): cb.addItem(getattr(v, label_attr) or getattr(v, "name", "N/A"), k)
-            cb.blockSignals(False)
-
-        fill(self.seq_species, self.lookups.species, "latin_name")
-        fill(self.rec_detector, self.lookups.detectors, "name")
-        fill(self.rec_habitat, self.lookups.habitats, "name")
-        fill(self.seq_context, self.lookups.contexts, "name")
-        fill(self.call_shape, self.lookups.shapes, "name")
-
-    def refresh_lookups(self):
-        """Пересобирает списки и восстанавливает текущие выбранные значения."""
-        self.populate_comboboxes()
-        # Вызов on_model_changed автоматически раскидает ID текущей модели по обновленным комбобоксам
-        self.on_model_changed()
 
     def bind_signals(self):
         self.rec_filename.textChanged.connect(lambda v: self.update_model('filename', v))
