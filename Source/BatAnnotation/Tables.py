@@ -4,7 +4,7 @@ BatAnnotationConfig.test()
 # = = = = = INNER = = = = = =
 
 from typing import List, Optional, Dict, Any
-from datetime import UTC, datetime
+from datetime import datetime
 import uuid
 
 from sqlalchemy import String, Float, Integer, ForeignKey, JSON, DateTime
@@ -78,8 +78,8 @@ class BatCall(BatAnnotationConfig.BASE):
     f_min_khz: Mapped[float] = mapped_column(Float)
     f_max_khz: Mapped[float] = mapped_column(Float)
     
-    fmaxe_khz: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    t_fmaxe_ms: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    peak_khz: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    peak_ms: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     
     signal_curves: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(String, nullable=True)

@@ -8,7 +8,7 @@ sys.path.insert(0, str(ScriptDir.parent))
 sys.path.insert(0, str(ScriptDir))
 
 from sqlalchemy import create_engine
-from sqlalchemy.orm import DeclarativeBase, sessionmaker
+from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 engine = create_engine(f"sqlite:///{ScriptDir.joinpath('test.db').as_posix()}", echo=False)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -25,7 +25,7 @@ from BatAnnotation.CommonSeeds.Core import seed_all as seed_core
 from BatAnnotation.CommonSeeds.EuropeGeneral import seed_all as seed_eu
 from BatAnnotation.Tables import Recording, CallSequence, BatCall
 
-def setup_synthetic_data(db):
+def setup_synthetic_data(db: Session):
     seed_core(db)
     seed_eu(db)
     
@@ -39,11 +39,11 @@ def setup_synthetic_data(db):
     seq1 = CallSequence(sequence_id=str(uuid.uuid4()), t_start_ms=1000, t_end_ms=1800, f_min_khz=35, f_max_khz=85)
     
     # Писк 1 с кривой
-    c1 = BatCall(t_start_ms=1010, t_end_ms=1030, f_min_khz=40, f_max_khz=80, fmaxe_khz=50.0, t_fmaxe_ms=1020)
+    c1 = BatCall(t_start_ms=1010, t_end_ms=1030, f_min_khz=40, f_max_khz=80, peak_khz=50.0, peak_ms=1020)
     c1.signal_curves = {"main": [[1010, 80], [1015, 60], [1020, 50], [1025, 45], [1030, 40]]}
     
     # Писк 2 с кривой
-    c2 = BatCall(t_start_ms=1200, t_end_ms=1220, f_min_khz=38, f_max_khz=78, fmaxe_khz=48.0, t_fmaxe_ms=1210)
+    c2 = BatCall(t_start_ms=1200, t_end_ms=1220, f_min_khz=38, f_max_khz=78, peak_khz=48.0, peak_ms=1210)
     c2.signal_curves = {"main": [[1200, 78], [1205, 58], [1210, 48], [1215, 43], [1220, 38]]}
     
     seq1.calls.extend([c1, c2])
@@ -77,6 +77,9 @@ class MainWindow(QMainWindow):
         tabs.addTab(self.lookups_tab, "📚 Справочники (БД)")
         
         self.setCentralWidget(tabs)
+
+        # СВЯЗЫВАЕМ ВКЛАДКИ: Когда справочники меняются, командуем редактору обновиться
+        self.lookups_tab.lookupsChanged.connect(self.editor_tab.refresh_lookups)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

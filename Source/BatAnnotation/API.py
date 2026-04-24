@@ -42,12 +42,11 @@ class MemoryBatCall:
     t_end_ms: float = 0.0
     f_min_khz: float = 0.0
     f_max_khz: float = 0.0
-    fmaxe_khz: Optional[float] = None
-    t_fmaxe_ms: Optional[float] = None
+    peak_khz: Optional[float] = None
+    peak_ms: Optional[float] = None
     signal_curves: Optional[Dict[str, Any]] = None
     notes: Optional[str] = None
     
-    # Флаг состояния: True = нужно делать INSERT, False = нужно делать UPDATE
     is_new: bool = field(default=True, repr=False)
     
     @property
@@ -66,7 +65,6 @@ class MemorySequence:
     notes: Optional[str] = None
     calls: List[MemoryBatCall] = field(default_factory=list)
     
-    # Флаг состояния: True = нужно делать INSERT, False = нужно делать UPDATE
     is_new: bool = field(default=True, repr=False)
 
 @dataclass
@@ -130,7 +128,7 @@ class AnnotationManager:
                 f_min_khz=db_seq.f_min_khz,
                 f_max_khz=db_seq.f_max_khz,
                 notes=db_seq.notes,
-                is_new=False  # <--- ЗАГРУЖЕНО ИЗ БД, ЗНАЧИТ НЕ НОВОЕ
+                is_new=False  
             )
             
             for db_call in db_seq.calls:
@@ -141,11 +139,11 @@ class AnnotationManager:
                     t_end_ms=db_call.t_end_ms,
                     f_min_khz=db_call.f_min_khz,
                     f_max_khz=db_call.f_max_khz,
-                    fmaxe_khz=db_call.fmaxe_khz,
-                    t_fmaxe_ms=db_call.t_fmaxe_ms,
+                    peak_khz=db_call.peak_khz,
+                    peak_ms=db_call.peak_ms,
                     signal_curves=db_call.signal_curves,
                     notes=db_call.notes,
-                    is_new=False # <--- ЗАГРУЖЕНО ИЗ БД, ЗНАЧИТ НЕ НОВОЕ
+                    is_new=False 
                 )
                 mem_seq.calls.append(mem_call)
                 
@@ -154,95 +152,96 @@ class AnnotationManager:
         return mem_rec
 
     def save_recording(self, mem_rec: MemoryRecording) -> None:
-        db_rec = self.session.query(Recording).filter_by(recording_id=mem_rec.recording_id).first()
-        if not db_rec:
-            raise ValueError(f"Recording с ID {mem_rec.recording_id} не найден в БД.")
-        
-        db_rec.habitat_id = mem_rec.habitat_id
-        db_rec.detector_id = mem_rec.detector_id
-        
-        existing_db_seq_ids = {seq.sequence_id for seq in db_rec.sequences}
-        existing_db_call_ids = {call.call_id for seq in db_rec.sequences for call in seq.calls}
-        
-        current_mem_seq_ids = set()
-        current_mem_call_ids = set()
-        
-        for mem_seq in mem_rec.sequences:
-            current_mem_seq_ids.add(mem_seq.sequence_id)
+        try:
+            db_rec = self.session.query(Recording).filter_by(recording_id=mem_rec.recording_id).first()
+            if not db_rec:
+                raise ValueError(f"Recording с ID {mem_rec.recording_id} не найден в БД.")
             
-            if mem_seq.is_new:
-                # СТРОГИЙ INSERT
-                new_seq = CallSequence(
-                    sequence_id=mem_seq.sequence_id,
-                    recording_id=mem_rec.recording_id,
-                    context_id=mem_seq.context_id,
-                    species_id=mem_seq.species_id,
-                    t_start_ms=mem_seq.t_start_ms,
-                    t_end_ms=mem_seq.t_end_ms,
-                    f_min_khz=mem_seq.f_min_khz,
-                    f_max_khz=mem_seq.f_max_khz,
-                    notes=mem_seq.notes
-                )
-                self.session.add(new_seq)
-            else:
-                # СТРОГИЙ UPDATE
-                db_seq = self.session.query(CallSequence).filter_by(sequence_id=mem_seq.sequence_id).first()
-                if db_seq:
-                    db_seq.context_id = mem_seq.context_id
-                    db_seq.species_id = mem_seq.species_id
-                    db_seq.t_start_ms = mem_seq.t_start_ms
-                    db_seq.t_end_ms = mem_seq.t_end_ms
-                    db_seq.f_min_khz = mem_seq.f_min_khz
-                    db_seq.f_max_khz = mem_seq.f_max_khz
-                    db_seq.notes = mem_seq.notes
+            db_rec.habitat_id = mem_rec.habitat_id
+            db_rec.detector_id = mem_rec.detector_id
             
-            for mem_call in mem_seq.calls:
-                current_mem_call_ids.add(mem_call.call_id)
+            existing_db_seq_ids = {seq.sequence_id for seq in db_rec.sequences}
+            existing_db_call_ids = {call.call_id for seq in db_rec.sequences for call in seq.calls}
+            
+            current_mem_seq_ids = set()
+            current_mem_call_ids = set()
+            
+            for mem_seq in mem_rec.sequences:
+                current_mem_seq_ids.add(mem_seq.sequence_id)
                 
-                if mem_call.is_new:
-                    # СТРОГИЙ INSERT
-                    new_call = BatCall(
-                        call_id=mem_call.call_id,
+                if mem_seq.is_new:
+                    new_seq = CallSequence(
                         sequence_id=mem_seq.sequence_id,
-                        shape_id=mem_call.shape_id,
-                        t_start_ms=mem_call.t_start_ms,
-                        t_end_ms=mem_call.t_end_ms,
-                        f_min_khz=mem_call.f_min_khz,
-                        f_max_khz=mem_call.f_max_khz,
-                        fmaxe_khz=mem_call.fmaxe_khz,
-                        t_fmaxe_ms=mem_call.t_fmaxe_ms,
-                        signal_curves=mem_call.signal_curves,
-                        notes=mem_call.notes
+                        recording_id=mem_rec.recording_id,
+                        context_id=mem_seq.context_id,
+                        species_id=mem_seq.species_id,
+                        t_start_ms=mem_seq.t_start_ms,
+                        t_end_ms=mem_seq.t_end_ms,
+                        f_min_khz=mem_seq.f_min_khz,
+                        f_max_khz=mem_seq.f_max_khz,
+                        notes=mem_seq.notes
                     )
-                    self.session.add(new_call)
+                    self.session.add(new_seq)
                 else:
-                    # СТРОГИЙ UPDATE
-                    db_call = self.session.query(BatCall).filter_by(call_id=mem_call.call_id).first()
-                    if db_call:
-                        db_call.shape_id = mem_call.shape_id
-                        db_call.t_start_ms = mem_call.t_start_ms
-                        db_call.t_end_ms = mem_call.t_end_ms
-                        db_call.f_min_khz = mem_call.f_min_khz
-                        db_call.f_max_khz = mem_call.f_max_khz
-                        db_call.fmaxe_khz = mem_call.fmaxe_khz
-                        db_call.t_fmaxe_ms = mem_call.t_fmaxe_ms
-                        db_call.signal_curves = mem_call.signal_curves
-                        db_call.notes = mem_call.notes
+                    db_seq = self.session.query(CallSequence).filter_by(sequence_id=mem_seq.sequence_id).first()
+                    if db_seq:
+                        db_seq.context_id = mem_seq.context_id
+                        db_seq.species_id = mem_seq.species_id
+                        db_seq.t_start_ms = mem_seq.t_start_ms
+                        db_seq.t_end_ms = mem_seq.t_end_ms
+                        db_seq.f_min_khz = mem_seq.f_min_khz
+                        db_seq.f_max_khz = mem_seq.f_max_khz
+                        db_seq.notes = mem_seq.notes
+                
+                for mem_call in mem_seq.calls:
+                    current_mem_call_ids.add(mem_call.call_id)
+                    
+                    if mem_call.is_new:
+                        new_call = BatCall(
+                            call_id=mem_call.call_id,
+                            sequence_id=mem_seq.sequence_id,
+                            shape_id=mem_call.shape_id,
+                            t_start_ms=mem_call.t_start_ms,
+                            t_end_ms=mem_call.t_end_ms,
+                            f_min_khz=mem_call.f_min_khz,
+                            f_max_khz=mem_call.f_max_khz,
+                            peak_khz=mem_call.peak_khz,
+                            peak_ms=mem_call.peak_ms,
+                            signal_curves=mem_call.signal_curves,
+                            notes=mem_call.notes
+                        )
+                        self.session.add(new_call)
+                    else:
+                        db_call = self.session.query(BatCall).filter_by(call_id=mem_call.call_id).first()
+                        if db_call:
+                            db_call.shape_id = mem_call.shape_id
+                            db_call.t_start_ms = mem_call.t_start_ms
+                            db_call.t_end_ms = mem_call.t_end_ms
+                            db_call.f_min_khz = mem_call.f_min_khz
+                            db_call.f_max_khz = mem_call.f_max_khz
+                            db_call.peak_khz = mem_call.peak_khz
+                            db_call.peak_ms = mem_call.peak_ms
+                            db_call.signal_curves = mem_call.signal_curves
+                            db_call.notes = mem_call.notes
 
-        # Удаление сирот
-        calls_to_delete = existing_db_call_ids - current_mem_call_ids
-        if calls_to_delete:
-            self.session.query(BatCall).filter(BatCall.call_id.in_(calls_to_delete)).delete(synchronize_session=False)
+            # Удаление сирот
+            calls_to_delete = existing_db_call_ids - current_mem_call_ids
+            if calls_to_delete:
+                self.session.query(BatCall).filter(BatCall.call_id.in_(calls_to_delete)).delete(synchronize_session=False)
+                
+            seqs_to_delete = existing_db_seq_ids - current_mem_seq_ids
+            if seqs_to_delete:
+                self.session.query(CallSequence).filter(CallSequence.sequence_id.in_(seqs_to_delete)).delete(synchronize_session=False)
+
+            # ИСПРАВЛЕНИЕ 2: Оборачиваем commit в блок try-except, чтобы откатить сессию при ошибке БД
+            self.session.commit()
             
-        seqs_to_delete = existing_db_seq_ids - current_mem_seq_ids
-        if seqs_to_delete:
-            self.session.query(CallSequence).filter(CallSequence.sequence_id.in_(seqs_to_delete)).delete(synchronize_session=False)
+            # СБРОС ФЛАГОВ: После успешного сохранения все объекты перестают быть "новыми"
+            for mem_seq in mem_rec.sequences:
+                mem_seq.is_new = False
+                for mem_call in mem_seq.calls:
+                    mem_call.is_new = False
 
-        # Выполняем SQL запросы
-        self.session.commit()
-        
-        # СБРОС ФЛАГОВ: После успешного сохранения все объекты перестают быть "новыми"
-        for mem_seq in mem_rec.sequences:
-            mem_seq.is_new = False
-            for mem_call in mem_seq.calls:
-                mem_call.is_new = False
+        except Exception as e:
+            self.session.rollback() # Обязательно откатываем, чтобы разблокировать сессию
+            raise e # Пробрасываем ошибку дальше в UI

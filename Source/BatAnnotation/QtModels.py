@@ -1,4 +1,5 @@
 from typing import Optional, Any
+import uuid
 from PySide6.QtCore import QObject, Signal, Property
 
 from BatAnnotation.API import MemoryBatCall, MemorySequence, MemoryRecording, MemoryLookups, MemorySpecies, MemoryLookupItem
@@ -25,17 +26,18 @@ class QtModelBase(QObject):
 class QtBatCall(QtModelBase):
     def __init__(self, parent: QObject | None = None):
         super().__init__(parent)
-        self._call_id: str = ""
+        # ИСПРАВЛЕНИЕ 1: Генерируем уникальный ID при создании нового объекта UI
+        self._call_id: str = str(uuid.uuid4())
         self._shape_id: Optional[str] = None
         self._t_start_ms: float = 0.0
         self._t_end_ms: float = 0.0
         self._f_min_khz: float = 0.0
         self._f_max_khz: float = 0.0
-        self._fmaxe_khz: Optional[float] = None
-        self._t_fmaxe_ms: Optional[float] = None
+        self._peak_khz: Optional[float] = None
+        self._peak_ms: Optional[float] = None
         self._signal_curves: Optional[dict] = None
         self._notes: Optional[str] = None
-        self._is_new: bool = True # <-- ДОБАВЛЕНО
+        self._is_new: bool = True 
 
     @Property(str, notify=QtModelBase.changed)
     def call_id(self) -> str: return self._call_id
@@ -68,14 +70,14 @@ class QtBatCall(QtModelBase):
     def f_max_khz(self, val: float): self._update_val("_f_max_khz", val)
 
     @Property(float, notify=QtModelBase.changed)
-    def fmaxe_khz(self) -> Optional[float]: return self._fmaxe_khz
-    @fmaxe_khz.setter
-    def fmaxe_khz(self, val: Optional[float]): self._update_val("_fmaxe_khz", val)
+    def peak_khz(self) -> Optional[float]: return self._peak_khz
+    @peak_khz.setter
+    def peak_khz(self, val: Optional[float]): self._update_val("_peak_khz", val)
 
     @Property(float, notify=QtModelBase.changed)
-    def t_fmaxe_ms(self) -> Optional[float]: return self._t_fmaxe_ms
-    @t_fmaxe_ms.setter
-    def t_fmaxe_ms(self, val: Optional[float]): self._update_val("_t_fmaxe_ms", val)
+    def peak_ms(self) -> Optional[float]: return self._peak_ms
+    @peak_ms.setter
+    def peak_ms(self, val: Optional[float]): self._update_val("_peak_ms", val)
 
     @Property(dict, notify=QtModelBase.changed)
     def signal_curves(self) -> Optional[dict]: return self._signal_curves
@@ -98,11 +100,11 @@ class QtBatCall(QtModelBase):
         self._t_end_ms = mem.t_end_ms
         self._f_min_khz = mem.f_min_khz
         self._f_max_khz = mem.f_max_khz
-        self._fmaxe_khz = mem.fmaxe_khz
-        self._t_fmaxe_ms = mem.t_fmaxe_ms
+        self._peak_khz = mem.peak_khz
+        self._peak_ms = mem.peak_ms
         self._signal_curves = mem.signal_curves
         self._notes = mem.notes
-        self._is_new = mem.is_new # <-- ДОБАВЛЕНО
+        self._is_new = mem.is_new 
         self.changed.emit()
 
     def to_memory(self) -> MemoryBatCall:
@@ -113,18 +115,19 @@ class QtBatCall(QtModelBase):
             t_end_ms=self._t_end_ms,
             f_min_khz=self._f_min_khz,
             f_max_khz=self._f_max_khz,
-            fmaxe_khz=self._fmaxe_khz,
-            t_fmaxe_ms=self._t_fmaxe_ms,
+            peak_khz=self._peak_khz,
+            peak_ms=self._peak_ms,
             signal_curves=self._signal_curves,
             notes=self._notes,
-            is_new=self._is_new # <-- ДОБАВЛЕНО
+            is_new=self._is_new 
         )
 
 
 class QtSequence(QtModelBase):
     def __init__(self, parent: QObject | None = None):
         super().__init__(parent)
-        self._sequence_id: str = ""
+        # ИСПРАВЛЕНИЕ 1: Генерируем уникальный ID
+        self._sequence_id: str = str(uuid.uuid4())
         self._context_id: Optional[str] = None
         self._species_id: Optional[str] = None
         self._t_start_ms: float = 0.0
@@ -132,7 +135,7 @@ class QtSequence(QtModelBase):
         self._f_min_khz: float = 0.0
         self._f_max_khz: float = 0.0
         self._notes: Optional[str] = None
-        self._is_new: bool = True # <-- ДОБАВЛЕНО
+        self._is_new: bool = True 
         
         self.calls = ReactiveList[QtBatCall]()
         self.calls.signals.changed.connect(self.changed)
@@ -186,7 +189,7 @@ class QtSequence(QtModelBase):
         self._f_min_khz = mem.f_min_khz
         self._f_max_khz = mem.f_max_khz
         self._notes = mem.notes
-        self._is_new = mem.is_new # <-- ДОБАВЛЕНО
+        self._is_new = mem.is_new 
 
         self.calls.clear()
         qt_calls = []
@@ -208,7 +211,7 @@ class QtSequence(QtModelBase):
             f_min_khz=self._f_min_khz,
             f_max_khz=self._f_max_khz,
             notes=self._notes,
-            is_new=self._is_new # <-- ДОБАВЛЕНО
+            is_new=self._is_new 
         )
         mem_seq.calls = [c.to_memory() for c in self.calls]
         return mem_seq
@@ -217,7 +220,7 @@ class QtSequence(QtModelBase):
 class QtRecording(QtModelBase):
     def __init__(self, parent: QObject | None = None):
         super().__init__(parent)
-        self._recording_id: str = ""
+        self._recording_id: str = str(uuid.uuid4()) # Для надежности
         self._filename: str = ""
         self._detector_id: Optional[str] = None
         self._habitat_id: Optional[str] = None

@@ -12,7 +12,7 @@ class FastAnnotationLayer(pg.GraphicsObject):
         super().__init__()
         self.recording = recording
         self.active_model = None
-        self.active_sub_type = None # "fmaxe" или "curve" или None
+        self.active_sub_type = None 
         
         self.pen_seq = pg.mkPen((50, 150, 255), width=1)
         self.brush_seq = pg.mkBrush(50, 150, 255, 30)
@@ -38,13 +38,11 @@ class FastAnnotationLayer(pg.GraphicsObject):
         py = self.pixelHeight() * 4 if self.pixelHeight() else 1
 
         for seq in self.recording.sequences:
-            # 1. Sequences
             if seq != self.active_model or self.active_sub_type:
                 p.setPen(self.pen_seq)
                 p.setBrush(self.brush_seq)
                 p.drawRect(QtCore.QRectF(seq.t_start_ms, seq.f_min_khz, seq.t_end_ms - seq.t_start_ms, seq.f_max_khz - seq.f_min_khz))
                 
-            # 2. Calls
             for call in seq.calls:
                 is_active_call = (call == self.active_model and not self.active_sub_type)
                 if not is_active_call:
@@ -54,14 +52,12 @@ class FastAnnotationLayer(pg.GraphicsObject):
                     
                 p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
                 
-                # 3. FmaxE (Point)
-                if call.fmaxe_khz is not None and call.t_fmaxe_ms is not None:
+                if call.peak_khz is not None and call.peak_ms is not None:
                     if not (call == self.active_model and self.active_sub_type == "fmaxe"):
                         p.setPen(self.pen_pt)
                         p.setBrush(self.brush_pt)
-                        p.drawEllipse(QtCore.QRectF(call.t_fmaxe_ms - px, call.fmaxe_khz - py, px * 2, py * 2))
+                        p.drawEllipse(QtCore.QRectF(call.peak_ms - px, call.peak_khz - py, px * 2, py * 2))
 
-                # 4. Curves
                 if call.signal_curves and "main" in call.signal_curves:
                     if not (call == self.active_model and self.active_sub_type == "curve"):
                         pts = call.signal_curves["main"]
@@ -78,7 +74,7 @@ class FastAnnotationLayer(pg.GraphicsObject):
 
 
 class SpectrogramWidget(pg.PlotWidget):
-    itemClicked = QtCore.Signal(str, object) # typ, model
+    itemClicked = QtCore.Signal(str, object) 
 
     def __init__(self, recording: QtRecording):
         super().__init__()
@@ -96,7 +92,10 @@ class SpectrogramWidget(pg.PlotWidget):
         self.active_roi = None
         self.active_model = None
         self.active_type = None
-        self._updating_from_code = False
+        
+        # Флаги защиты от рекурсии
+        self._updating_from_code = False 
+        self._updating_from_roi = False  
         
         self._prev_roi_pos = None
         self._prev_roi_size = None
@@ -114,6 +113,11 @@ class SpectrogramWidget(pg.PlotWidget):
     def set_selection(self, typ: str, model):
         self._updating_from_code = True
         
+        # 1. Отписываемся от старой модели
+        if self.active_model and hasattr(self.active_model, 'changed'):
+            try: self.active_model.changed.disconnect(self.on_model_changed_externally)
+            except Exception: pass
+
         if self.active_roi:
             self.view.removeItem(self.active_roi)
             self.active_roi = None
@@ -127,7 +131,10 @@ class SpectrogramWidget(pg.PlotWidget):
             self._updating_from_code = False
             return
 
-        # 1. Sequence / Call (Прямоугольник)
+        # 2. Подписываемся на новую модель
+        self.active_model.changed.connect(self.on_model_changed_externally)
+
+        # 3. Создаем ROI
         if typ in ["seq", "call"]:
             pen = pg.mkPen((50, 150, 255) if typ == "seq" else (50, 255, 50), width=2)
             pos = (model.t_start_ms, model.f_min_khz)
@@ -137,13 +144,11 @@ class SpectrogramWidget(pg.PlotWidget):
             self.active_roi.addScaleHandle([0, 0], [1, 1])
             self.active_roi.addTranslateHandle([0.5, 0.5])
             
-        # 2. FmaxE (Точка)
         elif typ == "fmaxe":
-            cx = model.t_fmaxe_ms if model.t_fmaxe_ms else model.t_start_ms + (model.t_end_ms - model.t_start_ms)/2
-            cy = model.fmaxe_khz if model.fmaxe_khz else model.f_min_khz + (model.f_max_khz - model.f_min_khz)/2
+            cx = model.peak_ms if model.peak_ms else model.t_start_ms + (model.t_end_ms - model.t_start_ms)/2
+            cy = model.peak_khz if model.peak_khz else model.f_min_khz + (model.f_max_khz - model.f_min_khz)/2
             self.active_roi = PointROI([cx, cy], pg.mkPen('y', width=2), pg.mkBrush(255, 255, 0, 150))
 
-        # 3. Curve (Линия с узлами)
         elif typ == "curve":
             pts = model.signal_curves.get("main", []) if model.signal_curves else []
             if not pts:
@@ -152,45 +157,59 @@ class SpectrogramWidget(pg.PlotWidget):
             self.active_roi = SmoothPolyLineROI(pts, pg.mkPen((255, 100, 255), width=3))
 
         if self.active_roi:
-            # Запоминаем изначальные параметры для вычисления дельты при драге
             self._prev_roi_pos = self.active_roi.pos()
             self._prev_roi_size = self.active_roi.size()
             
             self.active_roi.setZValue(100)
             self.active_roi.sigRegionChanged.connect(self.on_roi_changed)
             self.view.addItem(self.active_roi)
-            
-            # Убрано условие (if typ not in ...). Теперь autoRange срабатывает для всего!
             self.view.autoRange(items=[self.active_roi], padding=0.2)
                 
         self._updating_from_code = False
 
+    def on_model_changed_externally(self):
+        """Если модель изменили из Формы, ROI должен послушно подвинуться"""
+        if self._updating_from_roi or self._updating_from_code or not self.active_roi: return
+        
+        self._updating_from_code = True
+        
+        if self.active_type in ["seq", "call"]:
+            self.active_roi.setPos((self.active_model.t_start_ms, self.active_model.f_min_khz))
+            self.active_roi.setSize((self.active_model.t_end_ms - self.active_model.t_start_ms, self.active_model.f_max_khz - self.active_model.f_min_khz))
+            self._prev_roi_pos = self.active_roi.pos()
+            self._prev_roi_size = self.active_roi.size()
+            
+        elif self.active_type == "fmaxe":
+            if self.active_model.peak_ms and self.active_model.peak_khz:
+                self.active_roi.setPos((self.active_model.peak_ms, self.active_model.peak_khz))
+                
+        # Для PolyLineROI обновление формы чуть сложнее, пока оставляем.
+        
+        self._updating_from_code = False
+
     def on_roi_changed(self):
+        """Если мышку тянут по графику, обновляем Модель"""
         if self._updating_from_code or not self.active_model: return
+        
+        self._updating_from_roi = True # Защита, чтобы on_model_changed_externally не сработал на наше же изменение
         
         if self.active_type in ["seq", "call"]:
             pos, size = self.active_roi.pos(), self.active_roi.size()
             
-            # Вычисляем дельту перемещения
             dx = pos.x() - self._prev_roi_pos.x()
             dy = pos.y() - self._prev_roi_pos.y()
-            
-            # Если размер остался прежним, значит это чистое перетаскивание (translate)
             is_translating = (size.x() == self._prev_roi_size.x() and size.y() == self._prev_roi_size.y())
             
-            # Обновляем координаты самого элемента
             self.active_model.t_start_ms = pos.x()
             self.active_model.f_min_khz = pos.y()
             self.active_model.t_end_ms = pos.x() + size.x()
             self.active_model.f_max_khz = pos.y() + size.y()
             
-            # Если это перетаскивание - двигаем и всех детей
             if is_translating and (dx != 0 or dy != 0):
                 if self.active_type == "seq":
                     for call in self.active_model.calls:
                         self._shift_call(call, dx, dy, shift_bounds=True)
                 elif self.active_type == "call":
-                    # Для звонка двигаем только его виртуальные узлы (сам звонок мы уже сдвинули выше)
                     self._shift_call(self.active_model, dx, dy, shift_bounds=False)
                     
             self._prev_roi_pos = pos
@@ -198,8 +217,8 @@ class SpectrogramWidget(pg.PlotWidget):
             
         elif self.active_type == "fmaxe":
             pos = self.active_roi.pos()
-            self.active_model.t_fmaxe_ms = pos.x()
-            self.active_model.fmaxe_khz = pos.y()
+            self.active_model.peak_ms = pos.x()
+            self.active_model.peak_khz = pos.y()
             
         elif self.active_type == "curve":
             pts = self.active_roi.get_raw_points()
@@ -209,21 +228,20 @@ class SpectrogramWidget(pg.PlotWidget):
             new_curves["main"] = pts
             self.active_model.signal_curves = new_curves
 
-        # Принудительно обновляем FastLayer, так как дети могли сместиться без вызова глобальных сигналов
+        self._updating_from_roi = False
         self.fast_layer.update()
 
     def _shift_call(self, call, dx, dy, shift_bounds=True):
-        """Служебный метод для смещения координат писка и его виртуальных узлов"""
         if shift_bounds:
             call.t_start_ms += dx
             call.t_end_ms += dx
             call.f_min_khz += dy
             call.f_max_khz += dy
             
-        if call.t_fmaxe_ms is not None:
-            call.t_fmaxe_ms += dx
-        if call.fmaxe_khz is not None:
-            call.fmaxe_khz += dy
+        if call.peak_ms is not None:
+            call.peak_ms += dx
+        if call.peak_khz is not None:
+            call.peak_khz += dy
             
         if call.signal_curves and "main" in call.signal_curves:
             new_curves = dict(call.signal_curves)
@@ -247,14 +265,12 @@ class SpectrogramWidget(pg.PlotWidget):
         pos = self.view.mapSceneToView(ev.scenePos())
         px, py, thresh2 = pos.x(), pos.y(), self.get_hit_threshold()**2
 
-        # 1. Проверяем Точки (fmaxe)
         for seq in self.recording.sequences:
             for call in seq.calls:
-                if call.fmaxe_khz is not None and call.t_fmaxe_ms is not None:
-                    if (px - call.t_fmaxe_ms)**2 + (py - call.fmaxe_khz)**2 < thresh2:
+                if call.peak_khz is not None and call.peak_ms is not None:
+                    if (px - call.peak_ms)**2 + (py - call.peak_khz)**2 < thresh2:
                         return self.itemClicked.emit("fmaxe", call)
 
-        # 2. Проверяем Кривые
         for seq in self.recording.sequences:
             for call in seq.calls:
                 if call.signal_curves and "main" in call.signal_curves:
@@ -264,13 +280,11 @@ class SpectrogramWidget(pg.PlotWidget):
                         if d2 < thresh2:
                             return self.itemClicked.emit("curve", call)
 
-        # 3. Проверяем Писки (Calls)
         for seq in self.recording.sequences:
             for call in seq.calls:
                 if (call.t_start_ms <= px <= call.t_end_ms) and (call.f_min_khz <= py <= call.f_max_khz):
                     return self.itemClicked.emit("call", call)
 
-        # 4. Проверяем Секвенции (Sequences)
         for seq in self.recording.sequences:
             if (seq.t_start_ms <= px <= seq.t_end_ms) and (seq.f_min_khz <= py <= seq.f_max_khz):
                 return self.itemClicked.emit("seq", seq)
