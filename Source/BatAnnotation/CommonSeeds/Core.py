@@ -13,35 +13,35 @@ def seed_detectors(db: Session):
 
 def seed_habitats(db: Session):
     data = [
-        {"code": "forest", "name_ru": "Лес", "name_en": "Forest"},
-        {"code": "forest_edge", "name_ru": "Опушка леса", "name_en": "Forest Edge"},
-        {"code": "water", "name_ru": "Водоём", "name_en": "Water Body"},
-        {"code": "field", "name_ru": "Поле / Луг", "name_en": "Field / Meadow"},
-        {"code": "urban", "name_ru": "Городская среда", "name_en": "Urban"},
-        {"code": "wetland", "name_ru": "Болото", "name_en": "Wetland"},
-        {"code": "unknown", "name_ru": "Неизвестно", "name_en": "Unknown"},
+        {"code": "forest", "name": "Forest"},
+        {"code": "forest_edge", "name": "Forest Edge"},
+        {"code": "water", "name": "Water Body"},
+        {"code": "field", "name": "Field / Meadow"},
+        {"code": "urban", "name": "Urban"},
+        {"code": "wetland", "name": "Wetland"},
+        {"code": "unknown", "name": "Unknown"},
     ]
     seed_category(db, HabitatType, "code", data)
 
 def seed_contexts(db: Session):
     data = [
-        {"code": "foraging", "name_ru": "Охота", "name_en": "Foraging"},
-        {"code": "commuting", "name_ru": "Перелёт", "name_en": "Commuting"},
-        {"code": "roosting", "name_ru": "Убежище", "name_en": "Roosting"},
-        {"code": "social", "name_ru": "Социальные сигналы", "name_en": "Social"},
-        {"code": "drinking", "name_ru": "Питьё", "name_en": "Drinking"},
-        {"code": "unknown", "name_ru": "Неизвестно", "name_en": "Unknown"},
+        {"code": "foraging", "name": "Foraging"},
+        {"code": "commuting", "name": "Commuting"},
+        {"code": "roosting", "name": "Roosting"},
+        {"code": "social", "name": "Social"},
+        {"code": "drinking", "name": "Drinking"},
+        {"code": "unknown", "name": "Unknown"},
     ]
     seed_category(db, ContextType, "code", data)
 
 def seed_shapes(db: Session):
     data = [
-        {"code": "FM", "name_ru": "Частотно-модулированный"},
-        {"code": "CF", "name_ru": "Постоянная частота"},
-        {"code": "qCF", "name_ru": "Квазипостоянная частота"},
-        {"code": "FM-qCF", "name_ru": "FM с квазипостоянным хвостом"},
-        {"code": "qCF-FM", "name_ru": "Квазипостоянный с FM хвостом"},
-        {"code": "FM-CF-FM", "name_ru": "FM-CF-FM составной"},
+        {"code": "FM", "name": "Frequency Modulated"},
+        {"code": "CF", "name": "Constant Frequency"},
+        {"code": "qCF", "name": "Quasi-Constant Frequency"},
+        {"code": "FM-qCF", "name": "FM with qCF tail"},
+        {"code": "qCF-FM", "name": "qCF with FM tail"},
+        {"code": "FM-CF-FM", "name": "FM-CF-FM compound"},
     ]
     seed_category(db, SignalShape, "code", data)
 

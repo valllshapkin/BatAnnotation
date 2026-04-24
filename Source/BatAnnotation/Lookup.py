@@ -17,8 +17,6 @@ class Species(BASE):
 
     species_id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     latin_name: Mapped[str] = mapped_column(String, unique=True, nullable=False)   # Pipistrellus pipistrellus
-    common_name_ru: Mapped[Optional[str]] = mapped_column(String, nullable=True)   # Нетопырь-карлик
-    common_name_en: Mapped[Optional[str]] = mapped_column(String, nullable=True)   # Common Pipistrelle
     family: Mapped[Optional[str]] = mapped_column(String, nullable=True)           # Vespertilionidae
     genus: Mapped[Optional[str]] = mapped_column(String, nullable=True)            # Pipistrellus
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)                 # можно скрыть устаревшие
@@ -44,8 +42,7 @@ class HabitatType(BASE):
 
     habitat_id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     code: Mapped[str] = mapped_column(String, unique=True)      # forest_edge
-    name_ru: Mapped[str] = mapped_column(String)                # Опушка леса
-    name_en: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    name: Mapped[str] = mapped_column(String)                   # Forest Edge
     description: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
@@ -56,8 +53,7 @@ class ContextType(BASE):
 
     context_id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     code: Mapped[str] = mapped_column(String, unique=True)      # foraging
-    name_ru: Mapped[str] = mapped_column(String)                # Охота
-    name_en: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    name: Mapped[str] = mapped_column(String)                   # Foraging
     description: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
@@ -68,6 +64,6 @@ class SignalShape(BASE):
 
     shape_id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     code: Mapped[str] = mapped_column(String, unique=True)      # FM-qCF
-    name_ru: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    name: Mapped[Optional[str]] = mapped_column(String, nullable=True) # Frequency Modulated with ...
     description: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)

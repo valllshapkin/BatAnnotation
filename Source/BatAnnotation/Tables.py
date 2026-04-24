@@ -34,7 +34,6 @@ class Recording(BatAnnotationConfig.BASE):
     recorded_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     temperature_c: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
 
     # Relationships
     detector: Mapped[Optional["DetectorModel"]] = relationship("DetectorModel")
@@ -50,25 +49,17 @@ class CallSequence(BatAnnotationConfig.BASE):
 
     # FK на справочники
     context_id: Mapped[Optional[str]] = mapped_column(String, ForeignKey('ref_context_types.context_id'), nullable=True)
-    species_prediction_id: Mapped[Optional[str]] = mapped_column(String, ForeignKey('ref_species.species_id'), nullable=True)
-    species_expert_id: Mapped[Optional[str]] = mapped_column(String, ForeignKey('ref_species.species_id'), nullable=True)
+    species_id: Mapped[Optional[str]] = mapped_column(String, ForeignKey('ref_species.species_id'), nullable=True)
 
     t_start_ms: Mapped[float] = mapped_column(Float)
     t_end_ms: Mapped[float] = mapped_column(Float)
     f_min_khz: Mapped[float] = mapped_column(Float)
     f_max_khz: Mapped[float] = mapped_column(Float)
-    confidence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
-
-    # Агрегированные временные метрики секвенции
-    median_ipi_ms: Mapped[Optional[float]] = mapped_column(Float, nullable=True) # Медианный интервал
-    call_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)    # Количество писков
 
     # Relationships
     context: Mapped[Optional["ContextType"]] = relationship("ContextType")
-    species_prediction: Mapped[Optional["Species"]] = relationship("Species", foreign_keys=[species_prediction_id])
-    species_expert: Mapped[Optional["Species"]] = relationship("Species", foreign_keys=[species_expert_id])
+    species: Mapped[Optional["Species"]] = relationship("Species")
     recording: Mapped["Recording"] = relationship("Recording", back_populates="sequences")
     calls: Mapped[List["BatCall"]] = relationship("BatCall", back_populates="sequence", cascade="all, delete-orphan")
 
@@ -86,9 +77,12 @@ class BatCall(BatAnnotationConfig.BASE):
     t_end_ms: Mapped[float] = mapped_column(Float)
     f_min_khz: Mapped[float] = mapped_column(Float)
     f_max_khz: Mapped[float] = mapped_column(Float)
-    duration_ms: Mapped[float] = mapped_column(Float)
+    
     fmaxe_khz: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    ml_features: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    t_fmaxe_ms: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    
+    signal_curves: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     # Relationships
     shape: Mapped[Optional["SignalShape"]] = relationship("SignalShape")
