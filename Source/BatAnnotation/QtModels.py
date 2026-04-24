@@ -35,6 +35,7 @@ class QtBatCall(QtModelBase):
         self._t_fmaxe_ms: Optional[float] = None
         self._signal_curves: Optional[dict] = None
         self._notes: Optional[str] = None
+        self._is_new: bool = True # <-- ДОБАВЛЕНО
 
     @Property(str, notify=QtModelBase.changed)
     def call_id(self) -> str: return self._call_id
@@ -101,6 +102,7 @@ class QtBatCall(QtModelBase):
         self._t_fmaxe_ms = mem.t_fmaxe_ms
         self._signal_curves = mem.signal_curves
         self._notes = mem.notes
+        self._is_new = mem.is_new # <-- ДОБАВЛЕНО
         self.changed.emit()
 
     def to_memory(self) -> MemoryBatCall:
@@ -114,7 +116,8 @@ class QtBatCall(QtModelBase):
             fmaxe_khz=self._fmaxe_khz,
             t_fmaxe_ms=self._t_fmaxe_ms,
             signal_curves=self._signal_curves,
-            notes=self._notes
+            notes=self._notes,
+            is_new=self._is_new # <-- ДОБАВЛЕНО
         )
 
 
@@ -129,6 +132,7 @@ class QtSequence(QtModelBase):
         self._f_min_khz: float = 0.0
         self._f_max_khz: float = 0.0
         self._notes: Optional[str] = None
+        self._is_new: bool = True # <-- ДОБАВЛЕНО
         
         self.calls = ReactiveList[QtBatCall]()
         self.calls.signals.changed.connect(self.changed)
@@ -182,6 +186,7 @@ class QtSequence(QtModelBase):
         self._f_min_khz = mem.f_min_khz
         self._f_max_khz = mem.f_max_khz
         self._notes = mem.notes
+        self._is_new = mem.is_new # <-- ДОБАВЛЕНО
 
         self.calls.clear()
         qt_calls = []
@@ -202,7 +207,8 @@ class QtSequence(QtModelBase):
             t_end_ms=self._t_end_ms,
             f_min_khz=self._f_min_khz,
             f_max_khz=self._f_max_khz,
-            notes=self._notes
+            notes=self._notes,
+            is_new=self._is_new # <-- ДОБАВЛЕНО
         )
         mem_seq.calls = [c.to_memory() for c in self.calls]
         return mem_seq

@@ -161,7 +161,16 @@ class EditorWidget(QWidget):
 
     def save_data(self):
         try:
-            self.api.save_recording(self.recording.to_memory())
+            mem_rec_to_save = self.recording.to_memory()
+            self.api.save_recording(mem_rec_to_save)
             QMessageBox.information(self, "Успех", "Данные сохранены!")
+
+            # После успешного сохранения сбрасываем флаги в UI-моделях.
+            # Это критически важно, чтобы при следующем сохранении они пошли на UPDATE, а не INSERT.
+            for seq in self.recording.sequences:
+                seq._is_new = False
+                for call in seq.calls:
+                    call._is_new = False
+            
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", f"Не удалось сохранить: {e}")
