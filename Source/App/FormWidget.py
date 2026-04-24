@@ -1,5 +1,5 @@
 from PySide6.QtWidgets import QWidget, QStackedWidget, QFormLayout, QDoubleSpinBox, QComboBox, QLineEdit, QLabel, QVBoxLayout
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from BatSpec.QtUp.Builder import build_node as b
 
 class ReactiveComboBox(QComboBox):
@@ -25,6 +25,10 @@ class ReactiveComboBox(QComboBox):
 
 class PropertyForms(QStackedWidget):
     """Реактивный набор форм."""
+    
+    # Сигнал испускается, если пользователь изменил любое поле
+    dataModified = Signal()
+    
     def __init__(self, store):
         super().__init__()
         self.store = store
@@ -34,14 +38,12 @@ class PropertyForms(QStackedWidget):
         self.setup_ui()
 
     def setup_ui(self):
-        # 0: Recording
         with b(self, QWidget()) as w_rec:
             with b(w_rec, QVBoxLayout()) as l_rec:
                 with b(l_rec, QFormLayout()) as f_rec:
                     self.rec_filename = QLineEdit()
                     self.rec_detector = ReactiveComboBox(self.lookups.detectors, "name")
                     self.rec_habitat = ReactiveComboBox(self.lookups.habitats, "name")
-                    # ДОБАВЛЕНО: Поля для Sample Rate и Duration
                     self.rec_duration_s = QDoubleSpinBox(); self.rec_duration_s.setMaximum(999999)
                     self.rec_sample_rate_hz = QDoubleSpinBox(); self.rec_sample_rate_hz.setMaximum(9999999)
                     
@@ -52,7 +54,6 @@ class PropertyForms(QStackedWidget):
                     f_rec.addRow("Sample Rate (Гц):", self.rec_sample_rate_hz)
                 l_rec.addStretch()
         
-        # 1: Sequence
         with b(self, QWidget()) as w_seq:
             with b(w_seq, QVBoxLayout()) as l_seq:
                 with b(l_seq, QFormLayout()) as f_seq:
@@ -73,7 +74,6 @@ class PropertyForms(QStackedWidget):
                     f_seq.addRow("Заметки:", self.seq_notes)
                 l_seq.addStretch()
         
-        # 2: Call
         with b(self, QWidget()) as w_call:
             with b(w_call, QVBoxLayout()) as l_call:
                 with b(l_call, QFormLayout()) as f_call:
@@ -96,7 +96,6 @@ class PropertyForms(QStackedWidget):
                     f_call.addRow("Заметки:", self.call_notes)
                 l_call.addStretch()
         
-        # 3: Empty (or virtual node)
         with b(self, QLabel("Ничего не выбрано", alignment=Qt.AlignmentFlag.AlignCenter)):
             pass
             
@@ -116,6 +115,7 @@ class PropertyForms(QStackedWidget):
         self.seq_t_end.valueChanged.connect(lambda v: self.update_model('t_end_ms', v))
         self.seq_f_min.valueChanged.connect(lambda v: self.update_model('f_min_khz', v))
         self.seq_f_max.valueChanged.connect(lambda v: self.update_model('f_max_khz', v))
+        self.seq_notes.textChanged.connect(lambda v: self.update_model('notes', v))
         
         self.call_shape.currentIndexChanged.connect(lambda: self.update_cb(self.call_shape, 'shape_id'))
         self.call_t_start.valueChanged.connect(lambda v: self.update_model('t_start_ms', v))
@@ -124,12 +124,22 @@ class PropertyForms(QStackedWidget):
         self.call_f_max.valueChanged.connect(lambda v: self.update_model('f_max_khz', v))
         self.call_peak_khz.valueChanged.connect(lambda v: self.update_model('peak_khz', v))
         self.call_peak_ms.valueChanged.connect(lambda v: self.update_model('peak_ms', v))
+        self.call_notes.textChanged.connect(lambda v: self.update_model('notes', v))
 
     def update_model(self, field: str, value):
-        if self.current_model: setattr(self.current_model, field, value)
+        if self.current_model:
+            old_val = getattr(self.current_model, field)
+            if old_val != value:
+                setattr(self.current_model, field, value)
+                self.dataModified.emit() # Сообщаем о "грязном" состоянии
 
     def update_cb(self, combo: QComboBox, field: str):
-        if self.current_model: setattr(self.current_model, field, combo.currentData())
+        if self.current_model:
+            old_val = getattr(self.current_model, field)
+            new_val = combo.currentData()
+            if old_val != new_val:
+                setattr(self.current_model, field, new_val)
+                self.dataModified.emit() # Сообщаем о "грязном" состоянии
 
     def load_from(self, typ: str, model):
         if self.current_model and hasattr(self.current_model, 'changed'):
@@ -166,6 +176,7 @@ class PropertyForms(QStackedWidget):
             self.set_val(self.seq_t_end, model.t_end_ms)
             self.set_val(self.seq_f_min, model.f_min_khz)
             self.set_val(self.seq_f_max, model.f_max_khz)
+            self.set_val(self.seq_notes, model.notes or "")
             
         elif self.current_typ in ["call", "fmaxe", "curve"]:
             self.setCurrentIndex(2)
@@ -176,6 +187,7 @@ class PropertyForms(QStackedWidget):
             self.set_val(self.call_f_max, model.f_max_khz)
             self.set_val(self.call_peak_khz, model.peak_khz or 0.0)
             self.set_val(self.call_peak_ms, model.peak_ms or 0.0)
+            self.set_val(self.call_notes, model.notes or "")
 
     def set_val(self, widget, value):
         widget.blockSignals(True)

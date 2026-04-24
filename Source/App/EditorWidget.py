@@ -15,17 +15,16 @@ class EditorWidget(QWidget):
     def __init__(self, store: AppStore):
         super().__init__()
         self.store = store
+        self._prev_cb_index = -1
         self.setup_ui()
         self.load_recording_list()
 
     def setup_ui(self):
         main_layout = QVBoxLayout(self)
         
-        # ДОБАВЛЕНО: Выбор записи
         with b(main_layout, QHBoxLayout()) as toolbar_top:
             with b(toolbar_top, QComboBox()) as self.cb_recording:
                 self.cb_recording.currentIndexChanged.connect(self.on_recording_changed)
-                
             toolbar_top.addStretch()
 
         with b(main_layout, QHBoxLayout()) as toolbar:
@@ -41,51 +40,75 @@ class EditorWidget(QWidget):
             toolbar.addStretch()
             
             with b(toolbar, QPushButton("💾 Сохранить в БД")) as btn_save:
-                btn_save.clicked.connect(self.save_data)
+                btn_save.clicked.connect(lambda: self.save_data(show_info=True))
 
         with b(main_layout, QSplitter(Qt.Orientation.Horizontal)) as splitter:
             with b(splitter, AnnotationTreeWidget(self.store)) as self.tree:
                 self.tree.itemSelectionChanged.connect(self.on_tree_selection)
-                
-            with b(splitter, PropertyForms(self.store)) as self.forms:
-                pass
-                
+
             with b(splitter, SpectrogramWidget(self.store.recording)) as self.plot:
                 self.plot.itemClicked.connect(self.on_plot_click)
+                self.plot.dataModified.connect(self.mark_dirty)
                 
-            splitter.setSizes([250, 300, 700])
+            with b(splitter, PropertyForms(self.store)) as self.forms:
+                self.forms.dataModified.connect(self.mark_dirty)
+                
+            splitter.setSizes([250, 700, 250])
 
         if self.store.recording.recording_id:
             self.tree.build_from(self.store.recording)
+            self.plot.set_selection("rec", self.store.recording)
+
+    def mark_dirty(self):
+        """Вызывается при любом изменении в Форме или на Графике"""
+        self.store.is_dirty = True
 
     def load_recording_list(self):
-        """Загружает список всех файлов из БД в ComboBox"""
         self.cb_recording.blockSignals(True)
         self.cb_recording.clear()
         
-        # Получаем список из БД
         recs = self.store.db.query(Recording.recording_id, Recording.filename).all()
         for rec_id, fname in recs:
             self.cb_recording.addItem(fname, rec_id)
             
-        # Устанавливаем текущий
         idx = self.cb_recording.findData(self.store.recording.recording_id)
         if idx >= 0:
             self.cb_recording.setCurrentIndex(idx)
+            self._prev_cb_index = idx
             
         self.cb_recording.blockSignals(False)
 
-    def on_recording_changed(self):
-        rec_id = self.cb_recording.currentData()
+    def on_recording_changed(self, index: int):
+        if self.store.is_dirty:
+            reply = QMessageBox.question(
+                self, "Несохраненные изменения",
+                "У вас есть несохраненные изменения.\nСохранить их перед переключением?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel
+            )
+            if reply == QMessageBox.StandardButton.Cancel:
+                self.cb_recording.blockSignals(True)
+                self.cb_recording.setCurrentIndex(self._prev_cb_index)
+                self.cb_recording.blockSignals(False)
+                return
+            elif reply == QMessageBox.StandardButton.Yes:
+                if not self.save_data(show_info=False):
+                    self.cb_recording.blockSignals(True)
+                    self.cb_recording.setCurrentIndex(self._prev_cb_index)
+                    self.cb_recording.blockSignals(False)
+                    return
+
+        rec_id = self.cb_recording.itemData(index)
         if rec_id:
             self.store.load_recording(rec_id)
-            # Tree и Spectrogram обновятся автоматически через сигналы Store!
+            self._prev_cb_index = index
+            self.tree.clearSelection()
+            self.plot.set_selection("rec", self.store.recording)
 
     def on_tree_selection(self):
         items = self.tree.selectedItems()
         if not items:
             self.forms.load_from("", None)
-            self.plot.set_selection("", None)
+            self.plot.set_selection("rec", self.store.recording)
             return
             
         typ, model = items[0].data(0, Qt.ItemDataRole.UserRole)
@@ -97,6 +120,10 @@ class EditorWidget(QWidget):
             self.tree.clearSelection()
             return
             
+        if typ == "rec":
+            self.tree.clearSelection()
+            return
+
         iterator = QTreeWidgetItemIterator(self.tree)
         while iterator.value():
             item = iterator.value()
@@ -108,12 +135,14 @@ class EditorWidget(QWidget):
 
     def add_sequence(self):
         vr = self.plot.getViewBox().viewRect()
-        seq = QtSequence()
+        # ОБЯЗАТЕЛЬНО передаем родителя
+        seq = QtSequence(self.store.recording) 
         seq.t_start_ms = vr.center().x() - 100
         seq.t_end_ms = vr.center().x() + 100
         seq.f_min_khz = 20
         seq.f_max_khz = 60
         self.store.recording.sequences.append(seq)
+        self.mark_dirty()
 
     def add_call(self):
         items = self.tree.selectedItems()
@@ -121,12 +150,16 @@ class EditorWidget(QWidget):
             return QMessageBox.warning(self, "Внимание", "Выберите Sequence, куда добавить Call.")
             
         typ, model = items[0].data(0, Qt.ItemDataRole.UserRole)
-        seq = model if typ == "seq" else getattr(model, "parent", None) 
-        if typ != "seq":
+        
+        # Исправлено надежное получение родительской секвенции
+        seq = model if typ == "seq" else model.parent()
+        
+        if not seq or not isinstance(seq, QtSequence):
             return QMessageBox.warning(self, "Внимание", "Сначала выделите Sequence в дереве.")
             
         vr = self.plot.getViewBox().viewRect()
-        call = QtBatCall()
+        # ОБЯЗАТЕЛЬНО передаем родителя
+        call = QtBatCall(seq) 
         call.t_start_ms = vr.center().x() - 10
         call.t_end_ms = vr.center().x() + 10
         call.f_min_khz = seq.f_min_khz + 5
@@ -136,7 +169,8 @@ class EditorWidget(QWidget):
         call.peak_ms = call.t_start_ms + (call.t_end_ms - call.t_start_ms)/2
         call.signal_curves = {"main": [[call.t_start_ms, call.f_max_khz], [call.t_end_ms, call.f_min_khz]]}
         
-        model.calls.append(call)
+        seq.calls.append(call)
+        self.mark_dirty()
 
     def delete_selected(self):
         items = self.tree.selectedItems()
@@ -146,21 +180,31 @@ class EditorWidget(QWidget):
         if typ == "seq":
             self.store.recording.sequences.remove(model)
         elif typ == "call":
-            for seq in self.store.recording.sequences:
-                if model in seq.calls:
-                    seq.calls.remove(model)
-                    break
+            seq = model.parent()
+            if seq and model in seq.calls:
+                seq.calls.remove(model)
+            else:
+                # Надежный Fallback (на всякий случай)
+                for s in self.store.recording.sequences:
+                    if model in s.calls:
+                        s.calls.remove(model)
+                        break
         elif typ in ["fmaxe", "curve"]:
             if typ == "fmaxe":
-                model.peak_khz = None
-                model.peak_ms = None
+                model.peak_khz = 0.0
+                model.peak_ms = 0.0
             else:
                 model.signal_curves = None
             model.changed.emit()
+            
+        self.mark_dirty()
 
-    def save_data(self):
+    def save_data(self, show_info=True) -> bool:
         try:
             self.store.save_recording_to_db()
-            QMessageBox.information(self, "Успех", "Данные сохранены!")
+            if show_info:
+                QMessageBox.information(self, "Успех", "Данные сохранены!")
+            return True
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", f"Не удалось сохранить: {e}")
+            return False

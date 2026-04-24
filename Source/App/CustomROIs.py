@@ -27,7 +27,6 @@ class PointROI(pg.ROI):
 class SmoothPolyLineROI(pg.PolyLineROI):
     """Полилиния со сглаживанием между управляющими узлами"""
     def __init__(self, positions, pen):
-        # ИСПРАВЛЕНИЕ: Убрали handleSize из аргументов, чтобы не было ошибки
         super().__init__(
             positions, 
             closed=False, 
@@ -36,11 +35,15 @@ class SmoothPolyLineROI(pg.PolyLineROI):
             handlePen=pg.mkPen('w', width=2)
         )
         
-        # Задаем размер ручек напрямую атрибутом (pyqtgraph подхватит его при отрисовке)
-        self.handleSize = 14 
+        # Задаем размер ручек
+        self.handleSize = 10 
         
-        # Обновляем все уже созданные ручки, чтобы они перерисовались в новом размере
+        # Обновляем СТАРТОВЫЕ ручки (созданные через super().__init__)
         for h in self.getHandles():
+            h.radius = self.handleSize
+            h.buildPath()              
+            h._shape = None            
+            h.prepareGeometryChange()  
             h.update()
             
         self.smooth_path_item = QtWidgets.QGraphicsPathItem(self)
@@ -56,11 +59,30 @@ class SmoothPolyLineROI(pg.PolyLineROI):
         if len(handles) < 2: 
             return
             
+        # ИСЧЕРПЫВАЮЩИЙ ФИКС Z-ПЕРЕКРЫТИЯ И ХИТБОКСОВ
+        # QTimer.singleShot(0) ставит задачу в конец очереди Event Loop'а.
+        # Это значит, что код выполнится ПОСЛЕ того, как pyqtgraph закончит 
+        # кромсать отрезки и сбрасывать Z-индексы ручек.
+        QtCore.QTimer.singleShot(0, self._force_handles_to_top)
+        
         pts = np.array([[h.pos().x(), h.pos().y()] for h in handles])
         smooth_pts = chaikin_smooth(pts, iterations=3)
         
         path = pg.arrayToQPath(smooth_pts[:, 0], smooth_pts[:, 1], connect='finite')
         self.smooth_path_item.setPath(path)
+
+    def _force_handles_to_top(self):
+        """Принудительно вытаскиваем все ручки наверх и чистим их кэш"""
+        for h in self.getHandles():
+            h.setZValue(99999) # Гарантированно поверх невидимых отрезков
+            
+            # На всякий случай (если pyqtgraph забыл), 
+            # форсируем правильный размер и сброс кэша хитбокса у новых ручек
+            if h.radius != self.handleSize:
+                h.radius = self.handleSize
+                h.buildPath()
+                h._shape = None
+                h.prepareGeometryChange()
 
     def get_raw_points(self):
         pts = []

@@ -36,7 +36,7 @@ def setup_synthetic_data(db):
         return rec.recording_id
         
     print("Создаю синтетические данные...")
-    new_rec = Recording(recording_id=str(uuid.uuid4()), filename="test_forest_01.wav", sample_rate_hz=384000)
+    new_rec = Recording(recording_id=str(uuid.uuid4()), filename="test_forest_01.wav", sample_rate_hz=384000, duration_s=10.0)
     
     # Немного расширим тестовые данные для наглядности
     seq1 = CallSequence(sequence_id=str(uuid.uuid4()), t_start_ms=1000, t_end_ms=1800, f_min_khz=35, f_max_khz=85, notes="Четкий пролет")
@@ -300,6 +300,8 @@ class RecordingEditorWidget(QWidget):
         if mem_rec:
             self.recording.load_from(mem_rec)
             self.build_tree()
+            # Устанавливаем фокус на запись при первоначальной загрузке
+            self.plot.set_selection("rec", self.recording)
 
     def populate_comboboxes(self):
         def fill(cb: QComboBox, items_dict: dict, label_attr: str):
