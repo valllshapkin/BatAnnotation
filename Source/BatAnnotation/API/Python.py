@@ -28,11 +28,11 @@ class MemoryLookupItem:
 
 @dataclass
 class MemoryLookups:
-    species: Dict[str, MemorySpecies] = field(default_factory=dict)
-    detectors: Dict[str, MemoryLookupItem] = field(default_factory=dict)
-    habitats: Dict[str, MemoryLookupItem] = field(default_factory=dict)
-    contexts: Dict[str, MemoryLookupItem] = field(default_factory=dict)
-    shapes: Dict[str, MemoryLookupItem] = field(default_factory=dict)
+    species: Dict[str, MemorySpecies] =field(default_factory=dict) # type: ignore[reportUnknownVariableType]
+    detectors: Dict[str, MemoryLookupItem] = field(default_factory=dict) # type: ignore[reportUnknownVariableType]
+    habitats: Dict[str, MemoryLookupItem] = field(default_factory=dict) # type: ignore[reportUnknownVariableType]
+    contexts: Dict[str, MemoryLookupItem] = field(default_factory=dict) # type: ignore[reportUnknownVariableType]
+    shapes: Dict[str, MemoryLookupItem] = field(default_factory=dict) # type: ignore[reportUnknownVariableType]
 
 @dataclass
 class MemoryBatCall:
@@ -63,7 +63,7 @@ class MemorySequence:
     f_min_khz: float = 0.0
     f_max_khz: float = 0.0
     notes: Optional[str] = None
-    calls: List[MemoryBatCall] = field(default_factory=list)
+    calls: List[MemoryBatCall] = field(default_factory=list) # type: ignore[reportUnknownVariableType]
     
     is_new: bool = field(default=True, repr=False)
 
@@ -75,14 +75,14 @@ class MemoryRecording:
     duration_s: Optional[float] = None
     detector_id: Optional[str] = None
     habitat_id: Optional[str] = None
-    sequences: List[MemorySequence] = field(default_factory=list)
+    sequences: List[MemorySequence] = field(default_factory=list) # type: ignore[reportUnknownVariableType]
 
 
 # ==============================================================================
 # МЕНЕДЖЕР АННОТАЦИЙ (API для работы с БД)
 # ==============================================================================
 
-class AnnotationManager:
+class BasePythoBridge:
     def __init__(self, db_session: Session):
         self.session: Session = db_session
 

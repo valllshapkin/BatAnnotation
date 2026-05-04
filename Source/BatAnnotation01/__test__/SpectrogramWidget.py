@@ -4,7 +4,7 @@ import zlib
 from pyqtgraph.Qt import QtCore, QtGui
 from PySide6.QtCore import Qt
 
-from BatAnnotation.API.PySide6 import QtModelBase, QtRecording, QtSequence, QtBatCall
+from BatAnnotation.QtModels import QtModelBase, QtRecording, QtSequence, QtBatCall
 
 class PointROI(pg.ROI):
     def __init__(self, pos, pen, brush):

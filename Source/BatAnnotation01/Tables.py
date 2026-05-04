@@ -1,4 +1,7 @@
-from BatAnnotation.config import BatAnnotationBase
+# = = = = = INNER = = = = = =
+from BatAnnotation import config as BatAnnotationConfig
+BatAnnotationConfig.test()
+# = = = = = INNER = = = = = =
 
 from typing import List, Optional, Dict, Any
 from datetime import datetime
@@ -13,7 +16,7 @@ from BatAnnotation.Lookup import ContextType, DetectorModel, HabitatType, Signal
 # ОСНОВНЫЕ ТАБЛИЦЫ — ссылаются на справочники через FK
 # ==============================================================================
 
-class Recording(BatAnnotationBase):
+class Recording(BatAnnotationConfig.BASE):
     __tablename__ = 'recordings'
 
     recording_id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -38,7 +41,7 @@ class Recording(BatAnnotationBase):
     sequences: Mapped[List["CallSequence"]] = relationship("CallSequence", back_populates="recording", cascade="all, delete-orphan")
 
 
-class CallSequence(BatAnnotationBase):
+class CallSequence(BatAnnotationConfig.BASE):
     __tablename__ = 'call_sequences'
 
     sequence_id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -61,7 +64,7 @@ class CallSequence(BatAnnotationBase):
     calls: Mapped[List["BatCall"]] = relationship("BatCall", back_populates="sequence", cascade="all, delete-orphan")
 
 
-class BatCall(BatAnnotationBase):
+class BatCall(BatAnnotationConfig.BASE):
     __tablename__ = 'bat_calls'
 
     call_id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))

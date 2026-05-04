@@ -1,4 +1,7 @@
-from BatAnnotation.config import BatAnnotationBase
+# = = = = = INNER = = = = = =
+from BatAnnotation import config as BatAnnotationConfig
+BatAnnotationConfig.test()
+# = = = = = INNER = = = = = =
 
 from typing import Optional
 import uuid
@@ -6,8 +9,9 @@ import uuid
 from sqlalchemy import String, Integer, Boolean
 from sqlalchemy.orm import Mapped, mapped_column
 
+from BatAnnotation.config import BASE
 
-class Species(BatAnnotationBase):
+class Species(BASE):
     """Виды летучих мышей"""
     __tablename__ = 'ref_species'
 
@@ -19,7 +23,7 @@ class Species(BatAnnotationBase):
     notes: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
 
-class DetectorModel(BatAnnotationBase):
+class DetectorModel(BASE):
     """Модели детекторов"""
     __tablename__ = 'ref_detector_models'
 
@@ -32,7 +36,7 @@ class DetectorModel(BatAnnotationBase):
     notes: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
 
-class HabitatType(BatAnnotationBase):
+class HabitatType(BASE):
     """Типы местообитаний"""
     __tablename__ = 'ref_habitat_types'
 
@@ -43,7 +47,7 @@ class HabitatType(BatAnnotationBase):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
-class ContextType(BatAnnotationBase):
+class ContextType(BASE):
     """Типы поведенческих контекстов"""
     __tablename__ = 'ref_context_types'
 
@@ -54,7 +58,7 @@ class ContextType(BatAnnotationBase):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
-class SignalShape(BatAnnotationBase):
+class SignalShape(BASE):
     """Формы сигналов"""
     __tablename__ = 'ref_signal_shapes'
 

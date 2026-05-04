@@ -1,25 +1,15 @@
-from pathlib import Path
-ScriptDir = Path(__file__).parent
+from pathlib import Path; ScriptDir = Path(__file__).parent
+from BatAnnotation.API.DataBase import connect, create_all
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import DeclarativeBase, sessionmaker
+session_main, engine_main = connect(ScriptDir.joinpath("test.db"))
+create_all(engine_main)
 
-engine = create_engine(f"sqlite:///{ScriptDir.joinpath("test.db").as_posix()}", echo=False)    
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+with session_main() as db: 
+    from BatAnnotation.Common.Core import seed_all; seed_all(db)
+    from BatAnnotation.Common.EuropeGeneral import seed_all; seed_all(db)
+    from BatAnnotation.Common.EuropeSouthIslands import seed_all; seed_all(db)
 
-class TestBase(DeclarativeBase): pass
-
-from BatAnnotation import config as BatAnnotationConfig
-BatAnnotationConfig.BASE = TestBase
-
-from BatAnnotation.manage import create_all; create_all(engine)
-
-with SessionLocal() as db: 
-    from BatAnnotation.CommonSeeds.Core import seed_all; seed_all(db)
-    from BatAnnotation.CommonSeeds.EuropeGeneral import seed_all; seed_all(db)
-    from BatAnnotation.CommonSeeds.EuropeSouthIslands import seed_all; seed_all(db)
-
-
+print("ok")
 
 
 
